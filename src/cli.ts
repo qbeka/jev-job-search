@@ -13,13 +13,14 @@ import { loadMemory, prune, saveMemory } from "./answers/memory.js";
 import { inspect, setValues } from "./browser/formRunner.js";
 import { loadReport, type Fill, type FillReport } from "./browser/report.js";
 import { closeJobTab } from "./browser/session.js";
+import { withStore } from "./util/store.js";
 import { checkJob } from "./browser/submit.js";
 import { loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
 import { discover } from "./discover.js";
 import { formatChecks, isReadyToRun, nextStep, runChecks } from "./doctor.js";
 import { JevClient } from "./jev/client.js";
 import { loadKnowledge, shareKnowledge } from "./knowledge/sites.js";
-import { loadQueue, saveQueue, sortEntries, updateEntry, QueueStatus } from "./jobs/queue.js";
+import { loadQueue, mutateQueue, sortEntries, updateEntry, QueueStatus } from "./jobs/queue.js";
 import { formatCost, loadCost } from "./log/cost.js";
 import { appliedRecords, loadRows, manualRecords, saveRows, toRecord, upsertEntry } from "./log/csv.js";
 import { loadProfile } from "./profile/schema.js";
@@ -301,10 +302,11 @@ program
   .option("--notes <text>")
   .action((id: string, o: { status: string; reason?: string; notes?: string }) => {
     const status = QueueStatus.parse(o.status);
-    const q = loadQueue();
-    const e = updateEntry(q, id, { status, statusReason: o.reason ?? null, ...(o.notes ? { notes: o.notes } : {}), ...(status === "applied" ? { appliedAt: new Date().toISOString() } : {}) });
-    saveQueue(q);
-    saveRows(upsertEntry(loadRows(), e, o.notes ? { Notes: o.notes } : {}));
+    const e = withStore(() => {
+      const changed = mutateQueue((q) => updateEntry(q, id, { status, statusReason: o.reason ?? null, waitingFor: null, ...(o.notes ? { notes: o.notes } : {}), ...(status === "applied" ? { appliedAt: new Date().toISOString() } : {}) }));
+      saveRows(upsertEntry(loadRows(), changed, o.notes ? { Notes: o.notes } : {}));
+      return changed;
+    });
     console.log(`${e.job.company} | ${e.job.title} → ${status}${o.reason ? ` (${o.reason})` : ""}`);
   });
 

@@ -16,7 +16,8 @@ import { submitJob } from "../browser/submit.js";
 import { logNotes } from "../answers/resolve.js";
 import { JevClient } from "../jev/client.js";
 import { applyUrlFor, hostIs, type Job } from "../jobs/normalize.js";
-import { loadQueue, saveQueue, sortEntries, updateEntry, type QueueEntry } from "../jobs/queue.js";
+import { loadQueue, mutateQueue, sortEntries, updateEntry, type QueueEntry } from "../jobs/queue.js";
+import { withStore } from "../util/store.js";
 import { rememberWalledHost } from "../jobs/walled.js";
 import { learn, loadKnowledge } from "../knowledge/sites.js";
 import { loadRows, saveRows, takeHomeCell, upsertEntry } from "../log/csv.js";
@@ -37,30 +38,47 @@ const hostOf = (url: string) => {
   }
 };
 
-/** The jobs a run works on: the given ids, or the best queued ones. A real run marks them in progress; a rehearsal leaves the queue alone. */
-export function takeJobs(ids: string[], o: { count: number; dry: boolean }): QueueEntry[] {
-  const q = loadQueue();
-  if (ids.length) {
-    return ids.map((id) => {
-      const e = q.entries.find((x) => x.job.id === id);
-      if (!e) throw new Error(`No queue entry ${id}`);
-      return e;
-    });
-  }
-  if (o.dry) return sortEntries(q.entries.filter((e) => e.status === "queued")).slice(0, o.count);
-  const entries = sortEntries(q.entries.filter((e) => e.status === "queued")).slice(0, o.count);
-  for (const e of entries) updateEntry(q, e.job.id, { status: "in_progress", attempts: e.attempts + 1 });
-  saveQueue(q);
-  return entries;
+/**
+ * The jobs a run works on: the given ids, or the best queued ones. A real run marks them in
+ * progress; a rehearsal leaves the queue alone. A job that was sent, or whose Submit was clicked
+ * with no confirmation seen, is refused: `resubmit` lets a sent one through on purpose, and nothing
+ * lets an unconfirmed one through until it is settled.
+ */
+export function takeJobs(ids: string[], o: { count: number; dry: boolean; resubmit?: boolean }): QueueEntry[] {
+  if (o.dry) return pickJobs(loadQueue().entries, ids, o).picked;
+  return mutateQueue((q) => {
+    const { picked, refused } = pickJobs(q.entries, ids, o);
+    for (const r of refused) console.log(`${r.id}  not taken: ${r.why}`);
+    for (const e of picked) updateEntry(q, e.job.id, { status: "in_progress", statusReason: null, waitingFor: null, attempts: e.attempts + 1 });
+    return picked;
+  });
 }
 
-/** Records an outcome in the queue and in the record files. */
-export function record(id: string, status: QueueEntry["status"], reason: string | null, extra: Partial<Record<"What They Do" | "Why You're a Fit" | "Notes" | "Take-home", string>> = {}): QueueEntry {
-  const q = loadQueue();
-  const e = updateEntry(q, id, { status, statusReason: reason, ...(status === "applied" ? { appliedAt: new Date().toISOString() } : {}) });
-  saveQueue(q);
-  saveRows(upsertEntry(loadRows(), e, extra));
-  return e;
+/** Which of the queue's jobs a run may take, and which named ids it must refuse, with the reason. A rehearsal sends nothing, so it may take any. */
+export function pickJobs(entries: QueueEntry[], ids: string[], o: { count: number; dry: boolean; resubmit?: boolean }): { picked: QueueEntry[]; refused: { id: string; why: string }[] } {
+  if (!ids.length) return { picked: sortEntries(entries.filter((e) => e.status === "queued")).slice(0, o.count), refused: [] };
+  const picked: QueueEntry[] = [];
+  const refused: { id: string; why: string }[] = [];
+  for (const id of ids) {
+    const e = entries.find((x) => x.job.id === id);
+    if (!e) throw new Error(`No queue entry ${id}`);
+    if (o.dry) picked.push(e);
+    else if (e.status === "submission_unknown") refused.push({ id, why: `Submit was clicked on this form before and no confirmation was seen. Settle it first: npx jev reconcile ${id}` });
+    else if (e.status === "applied" && !o.resubmit) refused.push({ id, why: `already applied on ${e.appliedAt?.slice(0, 10) ?? "an earlier day"}. To send it again on purpose, add --resubmit` });
+    else picked.push(e);
+  }
+  return { picked, refused };
+}
+
+type RowExtra = Partial<Record<"What They Do" | "Why You're a Fit" | "Notes" | "Take-home", string>>;
+
+/** Records an outcome in the queue and in the record files, as one step under the store lock. */
+export function record(id: string, status: QueueEntry["status"], reason: string | null, extra: RowExtra = {}, waitingFor: QueueEntry["waitingFor"] = null): QueueEntry {
+  return withStore(() => {
+    const e = mutateQueue((q) => updateEntry(q, id, { status, statusReason: reason, waitingFor, ...(status === "applied" ? { appliedAt: new Date().toISOString() } : {}) }));
+    saveRows(upsertEntry(loadRows(), e, extra));
+    return e;
+  });
 }
 
 /** Records an application as sent. A take-home the form asked for goes into the record too, so takehome.csv lists it for the person. */
@@ -227,12 +245,17 @@ export async function noteApplied(ids: string[]): Promise<void> {
     }
   }
   for (const [id, n] of await logNotes(loadProfile(), entries.filter((e) => !notes.has(e.job.id)))) notes.set(id, n);
-  let rows = loadRows();
-  for (const e of entries) {
-    const n = notes.get(e.job.id);
-    if (n && (n.whatTheyDo || n.whyFit)) rows = upsertEntry(rows, e, { "What They Do": n.whatTheyDo, "Why You're a Fit": n.whyFit });
-  }
-  saveRows(rows);
+  // The writer took a while: the rows are written from the queue as it is now, not as it was before the call.
+  withStore(() => {
+    const now = new Map(loadQueue().entries.map((e) => [e.job.id, e]));
+    let rows = loadRows();
+    for (const id of ids) {
+      const e = now.get(id);
+      const n = notes.get(id);
+      if (e && n && (n.whatTheyDo || n.whyFit)) rows = upsertEntry(rows, e, { "What They Do": n.whatTheyDo, "Why You're a Fit": n.whyFit });
+    }
+    saveRows(rows);
+  });
 }
 
 /** Takes a form from its filled first page to its last: each page resolved, then the form's own Next. */

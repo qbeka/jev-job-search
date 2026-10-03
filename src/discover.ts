@@ -11,7 +11,13 @@ import { describe } from "./jobs/describe.js";
 import { preFilter } from "./jobs/hardFilters.js";
 import { isWalled, learnedWalledHosts } from "./jobs/walled.js";
 import { dedupe, type Job } from "./jobs/normalize.js";
-import { entryFor, loadQueue, saveQueue, sortEntries, type QueueEntry, type QueueFile } from "./jobs/queue.js";
+import { entryFor, KEPT_ON_REDISCOVERY, loadQueue, mutateQueue, sortEntries, type QueueEntry, type QueueFile, type QueueStatus } from "./jobs/queue.js";
+import { withStore } from "./util/store.js";
+
+/** Jobs whose earlier rating still stands: a run or a person already settled them. */
+const NOT_RERATED: readonly QueueStatus[] = KEPT_ON_REDISCOVERY.filter((s) => s !== "needs_review" && s !== "in_progress");
+/** Jobs kept in the queue when their posting is gone from every list: sent, unconfirmed, or waiting on the person or a run. */
+const CARRIED_OVER: readonly QueueStatus[] = KEPT_ON_REDISCOVERY.filter((s) => s !== "skipped" && s !== "failed");
 import { rateJob, type FitResult } from "./jobs/rate.js";
 import { loadRows, saveRows, upsertEntry } from "./log/csv.js";
 import { usStatus, type Profile } from "./profile/schema.js";
@@ -104,6 +110,32 @@ export async function collectJobs(opts: DiscoverOptions = {}): Promise<Job[]> {
   return dedupe(jobs);
 }
 
+/** What a search decided about one posting. */
+export type Decided = { job: Job; fit: FitResult | null; reason: string | null; failed?: string };
+
+/**
+ * The queue after a search: every posting the search saw, with what a run or a person decided
+ * about it kept, plus every job the search did not see that was sent, is unconfirmed, or waits on
+ * someone. A posting that left the lists must stay: dropped, it could come back later as a new job
+ * and be applied to twice.
+ */
+export function mergeDecided(current: QueueEntry[], decided: Decided[]): QueueEntry[] {
+  const byId = new Map(current.map((e) => [e.job.id, e]));
+  const entries = decided.map((d) => {
+    const before = byId.get(d.job.id);
+    const e = entryFor(d.job, d.fit, d.reason, before);
+    // A rating that failed marks a job nobody settled as failed; one a run or a person settled keeps its status.
+    if (d.failed && !(before && KEPT_ON_REDISCOVERY.includes(before.status))) {
+      e.status = "failed";
+      e.statusReason = d.failed;
+    }
+    return e;
+  });
+  const seen = new Set(entries.map((e) => e.job.id));
+  for (const e of current) if (!seen.has(e.job.id) && CARRIED_OVER.includes(e.status)) entries.push(e);
+  return sortEntries(entries);
+}
+
 export async function discover(profile: Profile, jev: JevClient, opts: DiscoverOptions = {}): Promise<{ queue: QueueFile; summary: DiscoverSummary }> {
   const log = opts.log ?? (() => {});
   const now = opts.now ?? new Date();
@@ -117,20 +149,22 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
   const collected = all.length;
   log(`[discover] ${collected} unique postings`);
 
+  // What this search decided about each posting. The queue entries are built from these at the end,
+  // against the queue as it is then: a search takes minutes, and a run may record outcomes meanwhile.
+  const decided: Decided[] = [];
   const kept: Job[] = [];
-  const entries: QueueEntry[] = [];
   for (const job of all) {
     const reason = preFilter(job, now, (url) => isWalled(url, learned), us, opts.maxAgeDays);
-    if (reason) entries.push(entryFor(job, null, reason, prevById.get(job.id)));
+    if (reason) decided.push({ job, fit: null, reason });
     else kept.push(job);
   }
-  log(`[discover] ${kept.length} pass the code filters, ${entries.length} do not`);
+  log(`[discover] ${kept.length} pass the code filters, ${decided.length} do not`);
 
   // Jobs with a terminal status from an earlier run are not re-rated.
   const toRate = kept.filter((j) => {
     const prev = prevById.get(j.id);
-    if (prev && ["applied", "skipped", "failed", "blocked"].includes(prev.status) && prev.fit) {
-      entries.push(entryFor(j, prev.fit as FitResult, null, prev));
+    if (prev && NOT_RERATED.includes(prev.status) && prev.fit) {
+      decided.push({ job: j, fit: prev.fit as FitResult, reason: null });
       return false;
     }
     return true;
@@ -155,21 +189,23 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
     const job = ready[i] as Job;
     if (r.ok) {
       ratedCount++;
-      entries.push(entryFor(job, r.value, null, prevById.get(job.id)));
+      decided.push({ job, fit: r.value, reason: null });
     } else {
-      const e = entryFor(job, null, null, prevById.get(job.id));
-      e.status = "failed";
-      e.statusReason = `rating failed: ${String(r.error).slice(0, 120)}`;
-      entries.push(e);
+      decided.push({ job, fit: null, reason: null, failed: `rating failed: ${String(r.error).slice(0, 120)}` });
     }
   });
 
-  const queue: QueueFile = { version: 1, generatedAt: now.toISOString(), entries: sortEntries(entries) };
-  saveQueue(queue);
-
-  let rows = loadRows();
-  for (const e of queue.entries) rows = upsertEntry(rows, e);
-  saveRows(rows);
+  const queue = withStore(() => {
+    const merged = mutateQueue((q) => {
+      q.generatedAt = now.toISOString();
+      q.entries = mergeDecided(q.entries, decided);
+      return q;
+    });
+    let rows = loadRows();
+    for (const e of merged.entries) rows = upsertEntry(rows, e);
+    saveRows(rows);
+    return merged;
+  });
 
   const summary: DiscoverSummary = {
     collected,

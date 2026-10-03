@@ -4,22 +4,25 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { REPORT } from "../config.js";
-import { loadQueue, saveQueue, updateEntry } from "../jobs/queue.js";
+import { mutateQueue, updateEntry } from "../jobs/queue.js";
+import { withStore } from "../util/store.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { buildReport, StatusChange } from "./data.js";
 import { reportPage } from "./page.js";
 
 /** Applies one change from the page: the queue entry and the record row both move. */
 export function applyStatusChange(c: StatusChange): { company: string; title: string } {
-  const q = loadQueue();
-  const e = updateEntry(q, c.id, {
-    ...(c.status ? { status: c.status, statusReason: c.reason ?? null } : {}),
-    ...(c.notes !== undefined ? { notes: c.notes } : {}),
-    ...(c.status === "applied" ? { appliedAt: new Date().toISOString() } : {}),
+  return withStore(() => {
+    const e = mutateQueue((q) =>
+      updateEntry(q, c.id, {
+        ...(c.status ? { status: c.status, statusReason: c.reason ?? null, waitingFor: null } : {}),
+        ...(c.notes !== undefined ? { notes: c.notes } : {}),
+        ...(c.status === "applied" ? { appliedAt: new Date().toISOString() } : {}),
+      }),
+    );
+    saveRows(upsertEntry(loadRows(), e, c.notes !== undefined ? { Notes: c.notes } : {}));
+    return { company: e.job.company, title: e.job.title };
   });
-  saveQueue(q);
-  saveRows(upsertEntry(loadRows(), e, c.notes !== undefined ? { Notes: c.notes } : {}));
-  return { company: e.job.company, title: e.job.title };
 }
 
 const readBody = (req: IncomingMessage) =>

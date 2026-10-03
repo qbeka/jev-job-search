@@ -22,7 +22,7 @@ import { applyFills, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
 import { learn, notesFor, signatureOf, type Method } from "../knowledge/sites.js";
 import { showsValue } from "../util/dates.js";
 import { blockedReport, comparePages, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
-import { controlStates, dump, goto, inFront, inTurn, install, loadSession, pageFor, saveSession, settle, shownValues, trace, type Point } from "./session.js";
+import { controlStates, dump, goto, inFront, inTurn, install, loadSession, mutateSession, pageFor, settle, shownValues, trace, type Point } from "./session.js";
 
 /** The text of a button that leads from a posting to its form. */
 const APPLY_BUTTON = "^\\s*(apply|apply now|apply for this job|apply to this job|apply for this position|start application|i'm interested)\\s*[»›→>]*\\s*$";
@@ -77,7 +77,9 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job): Promi
     let d = await openForm(page, job);
     trace(`${job.company}: form open ${Date.now() - started}ms, ${d.fields.length} fields`);
     // Read and written in one synchronous step, so jobs filled side by side do not overwrite each other.
-    saveSession({ ...loadSession(), [job.id]: { targetId: target.id, url: d.url } });
+    mutateSession((s) => {
+      s[job.id] = { targetId: target.id, url: d.url, state: "filling", since: new Date().toISOString() };
+    });
     if (!isApplicationForm(d) && !d.hasPassword) {
       // Job boards answer bursts with an error page. One unhurried second try settles most of them.
       const first = await decidePageState(jev, await page.evaluate<string>("window.__awj.pageText()"), d.url, job.id);

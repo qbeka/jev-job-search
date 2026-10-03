@@ -3,7 +3,8 @@
  * needs, and the rules that say whether a form may be sent. Nothing here
  * touches the browser, so every rule is tested offline.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { writeAtomic } from "../util/store.js";
 import path from "node:path";
 import { FORM, PATHS } from "../config.js";
 import type { FieldsDump, FillPlan } from "../forms/fields.js";
@@ -55,8 +56,7 @@ const reportFile = (jobId: string) => path.join(PATHS.runs, `${jobId}.report.jso
 const planFile = (jobId: string) => path.join(PATHS.runs, `${jobId}.plan.json`);
 
 export function saveReport(r: FillReport): FillReport {
-  mkdirSync(PATHS.runs, { recursive: true });
-  writeFileSync(reportFile(r.jobId), JSON.stringify(r, null, 2));
+  writeAtomic(reportFile(r.jobId), JSON.stringify(r, null, 2));
   return r;
 }
 
@@ -69,8 +69,7 @@ export function loadReport(jobId: string): FillReport {
 
 /** The dump and the plan of the page a job's tab shows, kept for the steps after the fill. */
 export function savePlan(jobId: string, dump: FieldsDump, plan: FillPlan): void {
-  mkdirSync(PATHS.runs, { recursive: true });
-  writeFileSync(planFile(jobId), JSON.stringify({ dump, plan }, null, 2));
+  writeAtomic(planFile(jobId), JSON.stringify({ dump, plan }, null, 2));
 }
 
 export function loadPlan(jobId: string): { dump: FieldsDump; plan: FillPlan } {

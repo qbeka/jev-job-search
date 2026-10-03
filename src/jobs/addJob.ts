@@ -8,7 +8,7 @@ import { fetchGreenhouseBoard, greenhouseJobId, greenhouseSlug } from "../source
 import { fetchLeverBoard, leverJobId, leverSlug } from "../sources/ats/lever.js";
 import type { Profile } from "../profile/schema.js";
 import { canonicalUrl, jobId, type Job } from "./normalize.js";
-import { entryFor, loadQueue, saveQueue, type QueueEntry } from "./queue.js";
+import { entryFor, loadQueue, MAYBE_SENT, mutateQueue, type QueueEntry } from "./queue.js";
 import { rateJob } from "./rate.js";
 
 export const looksLikeUrl = (s: string) => /^https?:\/\//i.test(s);
@@ -30,12 +30,15 @@ export async function fetchPosting(url: string): Promise<Job | null> {
 export async function addJob(jev: JevClient, profile: Profile, url: string): Promise<QueueEntry> {
   const job = await fetchPosting(url);
   if (!job) throw new Error(`could not read a posting at ${url}. The tool reads Greenhouse, Lever and Ashby links; for another board, run discover and apply from the queue.`);
-  const q = loadQueue();
-  const previous = q.entries.find((e) => e.job.id === job.id);
-  if (previous?.status === "applied") return previous;
+  const before = loadQueue().entries.find((e) => e.job.id === job.id);
+  if (before && MAYBE_SENT.includes(before.status)) return before;
   const fit = await rateJob(jev, job, profile);
-  const entry = { ...entryFor(job, fit, null, previous), status: "queued" as const, statusReason: null };
-  q.entries = [entry, ...q.entries.filter((e) => e.job.id !== job.id)];
-  saveQueue(q);
-  return entry;
+  // Rating took a while, so the entry is merged into the queue as it is now.
+  return mutateQueue((q) => {
+    const previous = q.entries.find((e) => e.job.id === job.id);
+    if (previous && MAYBE_SENT.includes(previous.status)) return previous;
+    const entry = { ...entryFor(job, fit, null, previous), status: "queued" as const, statusReason: null, waitingFor: null };
+    q.entries = [entry, ...q.entries.filter((e) => e.job.id !== job.id)];
+    return entry;
+  });
 }

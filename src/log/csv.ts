@@ -14,11 +14,11 @@
  *
  * Both are rebuilt from the full record on every save.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { PATHS } from "../config.js";
 import { postingKey } from "../jobs/normalize.js";
-import type { QueueEntry } from "../jobs/queue.js";
+import type { QueueEntry, QueueStatus } from "../jobs/queue.js";
+import { withStore, writeAtomic } from "../util/store.js";
 
 export const SHEET_COLUMNS = [
   "Company", "What They Do", "Role / Title", "Location", "Visa / Work Auth", "Job Link",
@@ -92,12 +92,16 @@ export function loadRows(file = PATHS.applications): Row[] {
 }
 
 export function saveRows(rows: Row[], file = PATHS.applications, appliedFile: string | null = file === PATHS.applications ? PATHS.applied : null, manualFile: string | null = file === PATHS.applications ? PATHS.manual : null): void {
-  mkdirSync(path.dirname(file), { recursive: true });
   const kept = compactRows(rows);
-  writeFileSync(file, toCsv([[...COLUMNS], ...kept.map((r) => COLUMNS.map((c) => r[c] ?? ""))]));
-  if (appliedFile) writeFileSync(appliedFile, toCsv([[...APPLIED_COLUMNS], ...appliedRecords(kept).map((r) => APPLIED_COLUMNS.map((c) => r[c]))]));
-  if (manualFile) writeFileSync(manualFile, toCsv([[...MANUAL_COLUMNS], ...manualRecords(kept).map((r) => MANUAL_COLUMNS.map((c) => r[c]))]));
-  if (file === PATHS.applications) writeFileSync(PATHS.takehome, toCsv([[...TAKEHOME_COLUMNS], ...takehomeRecords(kept).map((r) => TAKEHOME_COLUMNS.map((c) => r[c]))]));
+  writeAtomic(file, toCsv([[...COLUMNS], ...kept.map((r) => COLUMNS.map((c) => r[c] ?? ""))]));
+  if (appliedFile) writeAtomic(appliedFile, toCsv([[...APPLIED_COLUMNS], ...appliedRecords(kept).map((r) => APPLIED_COLUMNS.map((c) => r[c]))]));
+  if (manualFile) writeAtomic(manualFile, toCsv([[...MANUAL_COLUMNS], ...manualRecords(kept).map((r) => MANUAL_COLUMNS.map((c) => r[c]))]));
+  if (file === PATHS.applications) writeAtomic(PATHS.takehome, toCsv([[...TAKEHOME_COLUMNS], ...takehomeRecords(kept).map((r) => TAKEHOME_COLUMNS.map((c) => r[c]))]));
+}
+
+/** Changes the record files: a fresh read, the change, whole-file writes, under the store lock. */
+export function mutateRows(fn: (rows: Row[]) => Row[]): void {
+  withStore(() => saveRows(fn(loadRows())));
 }
 
 /** The columns of takehome.csv: applications that went out to a company that also wants a take-home assignment. */
@@ -127,7 +131,7 @@ export type ManualRecord = Record<(typeof MANUAL_COLUMNS)[number], string>;
  */
 export function manualRecords(rows: Row[]): ManualRecord[] {
   return rows
-    .filter((r) => /^(Needs you|Needs review|Blocked)/.test(r["App. Status"]))
+    .filter((r) => MANUAL_STATUSES.includes(statusKeyOf(r["App. Status"])))
     .map((r) => ({ company: r.Company, role: r["Role / Title"], location: r.Location, reason: r["Skip Reason"] || r["App. Status"].replace(/^[^:]*:\s*/, ""), job_link: r["Job Link"], fit_score: r["Fit Score"], ats: r.ATS, posted_on: r["Posted On"], job_id: r["Job ID"] }))
     .sort((a, b) => Number(b.fit_score || 0) - Number(a.fit_score || 0));
 }
@@ -167,7 +171,7 @@ export function appliedRecords(rows: Row[]): AppliedRecord[] {
     .sort((a, b) => b.applied_on.localeCompare(a.applied_on) || a.company.localeCompare(b.company));
 }
 
-const STATUS_RANK = ["Applied", "Needs you", "Needs review", "Blocked", "In progress", "Queued", "Failed", "Skipped"];
+const STATUS_RANK = ["Applied", "Unconfirmed", "Waiting for you", "Needs you", "Needs review", "Sign-in needed", "Blocked", "Verifying email", "Registering", "Signed in", "In progress", "Queued", "Failed", "Skipped"];
 const rank = (r: Row) => {
   const i = STATUS_RANK.findIndex((s) => r["App. Status"].startsWith(s));
   return i < 0 ? STATUS_RANK.length : i;
@@ -222,7 +226,7 @@ export function upsertEntry(rows: Row[], e: QueueEntry, extra: Partial<Row> = {}
     Term: termLabel(e),
     Level: fit ? ((fit.answers.level as { choice?: string } | undefined)?.choice ?? "") : "",
     "Posted On": e.job.postedAt ?? "",
-    "Skip Reason": e.status === "skipped" || e.status === "blocked" || e.status === "failed" || e.status === "needs_review" ? (e.statusReason ?? "") : "",
+    "Skip Reason": e.status === "applied" || e.status === "queued" || e.status === "in_progress" ? "" : (e.statusReason ?? ""),
     "Job ID": e.job.id,
     ...extra,
   };
@@ -239,16 +243,38 @@ export function localDate(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function statusLabel(e: QueueEntry): string {
-  switch (e.status) {
-    case "applied": return "Applied";
-    case "queued": return "Queued";
-    case "in_progress": return "In progress";
-    case "needs_review": return "Needs you";
-    case "blocked": return `Blocked: ${e.statusReason ?? ""}`.trim();
-    case "failed": return `Failed: ${e.statusReason ?? ""}`.trim();
-    case "skipped": return `Skipped: ${e.statusReason ?? ""}`.trim();
-  }
+/** What the status column says for each status. Only "Applied" may start with that word: the sent list is found by it. */
+const STATUS_WORDS: Record<QueueStatus, string> = {
+  applied: "Applied",
+  queued: "Queued",
+  in_progress: "In progress",
+  needs_review: "Needs you",
+  blocked: "Blocked",
+  failed: "Failed",
+  skipped: "Skipped",
+  login_required: "Sign-in needed",
+  registering: "Registering",
+  awaiting_email_verification: "Verifying email",
+  authenticated: "Signed in",
+  awaiting_user_action: "Waiting for you",
+  submission_unknown: "Unconfirmed",
+};
+/** Statuses that carry their reason in the status column itself. */
+const WITH_REASON: readonly QueueStatus[] = ["blocked", "failed", "skipped", "awaiting_user_action", "submission_unknown"];
+/** Statuses that put a job on the by-hand list. */
+const MANUAL_STATUSES: readonly (QueueStatus | null)[] = ["needs_review", "blocked", "login_required", "awaiting_user_action", "submission_unknown"];
+
+export function statusLabel(e: Pick<QueueEntry, "status" | "statusReason">): string {
+  const word = STATUS_WORDS[e.status];
+  return WITH_REASON.includes(e.status) ? `${word}: ${e.statusReason ?? ""}`.trim() : word;
+}
+
+/** The status a status-column value stands for, or null for a value written by hand. "Needs review" is what older files say. */
+export function statusKeyOf(label: string): QueueStatus | null {
+  const word = label.replace(/:.*$/s, "").trim();
+  if (word === "Needs review") return "needs_review";
+  const hit = (Object.entries(STATUS_WORDS) as [QueueStatus, string][]).find(([, w]) => w === word);
+  return hit ? hit[0] : null;
 }
 
 function workAuthLabel(e: QueueEntry): string {

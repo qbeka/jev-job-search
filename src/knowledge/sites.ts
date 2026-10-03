@@ -14,8 +14,8 @@
  * The notes are about sites, never about the person: a host name, kinds of
  * controls, counts, and reasons with every quoted value taken out.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { withStore, writeAtomic } from "../util/store.js";
 import { z } from "zod";
 import { PATHS } from "../config.js";
 
@@ -150,10 +150,11 @@ export function learn(url: string, lesson: Lesson, local = PATHS.knowledgeLocal)
   const host = hostOf(url);
   if (!host) return;
   try {
-    const mine = read(local);
-    mine.sites[host] = withLesson(mine.sites[host] ?? SiteNotes.parse({}), lesson, new Date().toISOString().slice(0, 10));
-    mkdirSync(path.dirname(local), { recursive: true });
-    writeFileSync(local, JSON.stringify(mine, null, 1));
+    withStore(() => {
+      const mine = read(local);
+      mine.sites[host] = withLesson(mine.sites[host] ?? SiteNotes.parse({}), lesson, new Date().toISOString().slice(0, 10));
+      writeAtomic(local, JSON.stringify(mine, null, 1));
+    });
     cached = null;
   } catch {
     /* best effort */
@@ -171,10 +172,9 @@ export const signInHosts = (k: Knowledge = loadKnowledge()): string[] => Object.
 export function shareKnowledge(shipped = PATHS.knowledgeShipped, local = PATHS.knowledgeLocal): number {
   const merged = mergeKnowledge(read(shipped), read(local));
   const sites = Object.fromEntries(Object.entries(merged.sites).sort(([a], [b]) => a.localeCompare(b)));
-  mkdirSync(path.dirname(shipped), { recursive: true });
-  writeFileSync(shipped, JSON.stringify({ version: 1, sites }, null, 1) + "\n");
+  writeAtomic(shipped, JSON.stringify({ version: 1, sites }, null, 1) + "\n");
   // What was shared now lives in the shipped file. Keeping it locally too would count every form twice.
-  writeFileSync(local, JSON.stringify(Knowledge.parse({}), null, 1));
+  writeAtomic(local, JSON.stringify(Knowledge.parse({}), null, 1));
   cached = null;
   return Object.keys(sites).length;
 }

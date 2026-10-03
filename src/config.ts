@@ -44,6 +44,9 @@ export const PATHS = {
   /** How many applications have gone out since the runner's browsing data was last cleared. */
   browsing: path.join(ROOT, "data", "runs", "browsing.json"),
   runs: path.join(ROOT, "data", "runs"),
+  /** Short locks around read-modify-write of the records, and the lock a browser run holds. */
+  locks: path.join(ROOT, "data", "runs", "locks"),
+  runLock: path.join(ROOT, "data", "runs", "run.lock"),
   jevUsage: path.join(ROOT, "data", "runs", "jev-usage.jsonl"),
   writerUsage: path.join(ROOT, "data", "runs", "writer-usage.jsonl"),
   imports: path.join(ROOT, "data", "imports"),
@@ -283,6 +286,17 @@ export const DOCUMENTS = {
   maxLetterWords: 260,
   /** Words that may be capitalized in a sentence without being a claim about the candidate. */
   plainWords: ["I", "A", "An", "The", "My", "In", "At", "On", "For", "With", "And", "As", "To", "Of", "This", "That", "It", "We", "You", "Your", "Our", "If", "When", "While", "After", "Before", "Over", "Since", "Through", "Then", "There", "Here", "What", "Which", "Who", "How", "Why", "Yes", "No", "Dear", "Hi", "Hello", "Sincerely", "Best", "Regards", "Thank", "Thanks", "Team", "Hiring", "Manager", "Regarding", "Re"],
+} as const;
+
+/** How files are written and locked (`src/util/store.ts`). */
+export const STORE = {
+  /** How long a command waits for another command's write to finish. */
+  lockWaitMs: 15_000,
+  lockPollMs: 25,
+  /** A write lock older than this was left by a process that hung. */
+  lockStaleMs: 60_000,
+  /** A run lock older than this was left behind: no run lasts this long. */
+  runStaleMs: 6 * 60 * 60_000,
 } as const;
 
 /** The dashboard: a page on your own machine that reads the records and lets you change a status by hand. */

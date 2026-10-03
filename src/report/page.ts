@@ -4,6 +4,7 @@
  */
 import type { Report } from "./data.js";
 import { REPORT } from "../config.js";
+import { LEFT_FOR_YOU } from "./data.js";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 
@@ -53,21 +54,23 @@ ${embedded}
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const embedded = document.getElementById("data");
   const live = !embedded;
+  const LEFT = ${JSON.stringify(LEFT_FOR_YOU)};
   const TABS = [
-    { key: "applied", label: "Applied", keep: (r) => r.status === "Applied" },
-    { key: "manual", label: "Left for you", keep: (r) => /^(Needs you|Needs review|Blocked)/.test(r.status) },
+    { key: "applied", label: "Applied", keep: (r) => r.status_key === "applied" },
+    { key: "waiting", label: "Waiting for you", keep: (r) => r.status_key === "awaiting_user_action" || r.status_key === "submission_unknown" },
+    { key: "manual", label: "Left for you", keep: (r) => LEFT.includes(r.status_key) },
     { key: "takehome", label: "Take-home", keep: (r) => !!r.takehome_link },
-    { key: "queued", label: "Queued", keep: (r) => r.status === "Queued" },
+    { key: "queued", label: "Queued", keep: (r) => r.status_key === "queued" },
     { key: "all", label: "Everything", keep: () => true },
   ];
   let data = null, tab = "applied", sortKey = "applied_on", sortDir = -1, q = "";
-  const statusClass = (s) => s === "Applied" ? "applied" : /^(Needs|Blocked)/.test(s) ? "needs" : "";
+  const statusClass = (k) => k === "applied" ? "applied" : LEFT.includes(k) ? "needs" : "";
   const bars = (el, obj, max) => { el.innerHTML = Object.entries(obj).slice(0, 10).map(([k, v]) => '<div class="bar"><span title="' + esc(k) + '">' + esc(k) + '</span><i style="width:' + Math.max(2, 100 * v / max) + '%"></i><b>' + v + '</b></div>').join("") || '<span class="sub">nothing yet</span>'; };
   function render() {
     const t = data.totals;
     $("#when").textContent = "as of " + new Date(data.generatedAt).toLocaleString();
     $("#mode").textContent = live ? "" : "snapshot: statuses cannot be changed here";
-    $("#cards").innerHTML = [["Applied", t.applied], ["Today", t.appliedToday], ["Waiting for you", t.waitingForYou], ["Left for you", t.leftForYou], ["Queued", t.queued], ["Skipped", t.skipped], ["Considered", t.considered]].map(([l, n]) => '<div class="card"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>').join("");
+    $("#cards").innerHTML = [["Applied", t.applied], ["Today", t.appliedToday], ["Unconfirmed", t.unconfirmed], ["Waiting for you", t.waitingForYou], ["Left for you", t.leftForYou], ["Queued", t.queued], ["Skipped", t.skipped], ["Considered", t.considered]].map(([l, n]) => '<div class="card"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>').join("");
     bars($("#byDay"), Object.fromEntries(data.byDay.map((d) => [d.day, d.applied])), Math.max(1, ...data.byDay.map((d) => d.applied)));
     bars($("#byBoard"), data.byBoard, Math.max(1, ...Object.values(data.byBoard)));
     bars($("#byStatus"), data.byStatus, Math.max(1, ...Object.values(data.byStatus)));
@@ -80,8 +83,10 @@ ${embedded}
     const cols = [["applied_on", "Date"], ["company", "Company"], ["role", "Role"], ["location", "Location"], ["ats", "Board"], ["fit_score", "Fit"], ["status", "Status"], ["skip_reason", "Reason"], ["notes", "Notes"]];
     $("#table thead").innerHTML = "<tr>" + cols.map(([k, l]) => '<th data-sort="' + k + '">' + l + (sortKey === k ? (sortDir > 0 ? " ▲" : " ▼") : "") + "</th>").join("") + "</tr>";
     $("#table tbody").innerHTML = rows.map((r) => {
-      const current = r.status === "Applied" ? "applied" : /^Needs/.test(r.status) ? "needs_review" : /^Blocked/.test(r.status) ? "blocked" : /^Skipped/.test(r.status) ? "skipped" : /^Failed/.test(r.status) ? "failed" : "queued";
-      const pick = live ? '<select data-id="' + esc(r.job_id) + '">' + STATUSES.map((s) => '<option value="' + s + '"' + (s === current ? " selected" : "") + ">" + s.replace("_", " ") + "</option>").join("") + "</select>" : "";
+      // A status the page does not offer (a run's own, or one waiting on you) is shown as it is, never as "queued".
+      const current = r.status_key;
+      const other = STATUSES.includes(current) ? "" : '<option value="" selected disabled>' + esc(r.status.replace(/:.*$/, "")) + "</option>";
+      const pick = live ? '<select data-id="' + esc(r.job_id) + '">' + other + STATUSES.map((s) => '<option value="' + s + '"' + (s === current ? " selected" : "") + ">" + s.replace("_", " ") + "</option>").join("") + "</select>" : "";
       return "<tr>" +
         '<td class="n">' + esc(r.applied_on) + "</td>" +
         "<td>" + esc(r.company) + "</td>" +
@@ -89,7 +94,7 @@ ${embedded}
         "<td>" + esc(r.location) + "</td>" +
         "<td>" + esc(r.ats) + "</td>" +
         '<td class="n">' + esc(r.fit_score) + "</td>" +
-        '<td><span class="status ' + statusClass(r.status) + '">' + esc(r.status.replace(/:.*$/, "")) + "</span><br>" + pick + '<span class="saved" id="saved-' + esc(r.job_id) + '"></span></td>' +
+        '<td><span class="status ' + statusClass(r.status_key) + '">' + esc(r.status.replace(/:.*$/, "")) + "</span><br>" + pick + '<span class="saved" id="saved-' + esc(r.job_id) + '"></span></td>' +
         "<td>" + esc(r.skip_reason || r.status.replace(/^[^:]*:\\s*/, "").replace(r.status.replace(/:.*$/, ""), "")) + "</td>" +
         "<td>" + (live ? '<textarea data-notes="' + esc(r.job_id) + '" placeholder="your notes">' + esc(r.notes) + "</textarea>" : esc(r.notes)) + "</td>" +
         "</tr>";

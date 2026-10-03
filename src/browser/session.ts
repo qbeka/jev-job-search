@@ -5,24 +5,38 @@
  * for a page to settle, read the form, read values back, and take turns at the
  * front of the window.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { BROWSER, PATHS } from "../config.js";
 import { FieldsDump } from "../forms/fields.js";
 import { closeTab, listTargets, Page, sleep } from "./cdp.js";
+import { withStore, writeAtomic } from "../util/store.js";
 
 export const script = (name: string) => readFileSync(path.join(PATHS.browserScripts, name), "utf8");
 const SESSION = path.join(PATHS.runs, "browser-session.json");
 
-type Session = Record<string, { targetId: string; url: string }>;
+/** One open tab per job. `state` and `since` say why a tab is kept after a run: it waits for the person, or for a confirmation. */
+export type SessionTab = { targetId: string; url: string; state?: "filling" | "awaiting_user_action" | "submission_unknown"; since?: string };
+type Session = Record<string, SessionTab>;
 export type Point = { x: number; y: number; ok: boolean; href?: string };
 export type ControlState = "on" | "off" | "missing";
 
-export const loadSession = (): Session => (existsSync(SESSION) ? (JSON.parse(readFileSync(SESSION, "utf8")) as Session) : {});
-export const saveSession = (s: Session) => {
-  mkdirSync(PATHS.runs, { recursive: true });
-  writeFileSync(SESSION, JSON.stringify(s, null, 2));
+export const loadSession = (): Session => {
+  try {
+    return existsSync(SESSION) ? (JSON.parse(readFileSync(SESSION, "utf8")) as Session) : {};
+  } catch {
+    // A session file that cannot be read means no tab is known: forms are opened again.
+    return {};
+  }
 };
+export const saveSession = (s: Session) => writeAtomic(SESSION, JSON.stringify(s, null, 2));
+/** Changes the session file: a fresh read, the change, a whole-file write, under the store lock. */
+export const mutateSession = (fn: (s: Session) => void): void =>
+  withStore(() => {
+    const s = loadSession();
+    fn(s);
+    saveSession(s);
+  });
 
 /** Step timings on stderr when AWJ_TRACE is set. */
 export const trace = (line: string) => {
@@ -113,8 +127,7 @@ export async function hasOpenTab(jobId: string): Promise<boolean> {
 export async function closeJobTab(jobId: string): Promise<void> {
   const s = loadSession()[jobId];
   if (s) await inTurn(() => closeTab(s.targetId));
-  // Read and written in one synchronous step, so jobs handled side by side do not overwrite each other.
-  const session = loadSession();
-  delete session[jobId];
-  saveSession(session);
+  mutateSession((session) => {
+    delete session[jobId];
+  });
 }

@@ -6,7 +6,8 @@
  * makes a new key and a new call. Nothing here can make an answer stale.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeAtomic } from "./store.js";
 import path from "node:path";
 
 export const hashOf = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24);
@@ -45,6 +46,6 @@ export class KeyedCache<T> {
     mkdirSync(path.dirname(this.file), { recursive: true });
     const all = Object.entries(this.entries);
     const kept = Object.fromEntries(this.keep === "all" ? all.slice(Math.max(0, all.length - this.max)) : all.filter(([k]) => this.touched.has(k)));
-    writeFileSync(this.file, JSON.stringify(kept));
+    writeAtomic(this.file, JSON.stringify(kept));
   }
 }

@@ -14,8 +14,8 @@
  * matching, so a corrected profile is never overruled by a remembered answer.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { writeAtomic } from "../util/store.js";
 import { z } from "zod";
 import { MEMORY, PATHS } from "../config.js";
 import type { JevClient } from "../jev/client.js";
@@ -100,8 +100,7 @@ export function loadMemory(file = PATHS.memory): MemoryFile {
 }
 
 export function saveMemory(mem: MemoryFile, file = PATHS.memory): void {
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(mem, null, 1));
+  writeAtomic(file, JSON.stringify(mem, null, 1));
 }
 
 const sha = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16);
