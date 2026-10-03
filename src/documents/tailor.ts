@@ -55,6 +55,7 @@ const SYSTEM = [
   "- The headline names the role in the posting's words. The summary says in two or three sentences what the candidate has built and why it fits this posting.",
   "- Skills: only skills the facts hold, ordered by what the posting asks for first. Use the posting's spelling when the facts have the same thing.",
   "- Experience: every job from the facts, most recent first, with the bullets that speak to this posting. Projects: the ones that speak to it, with their bullets.",
+  "- The cover letter must read as the candidate typed it in one go, in the register of the voice rules and the example in them: short plain sentences, mostly under 20 words, concrete things that shipped, no stock phrases of any kind, no dashes as punctuation, no semicolons, no exclamation marks, no lists of three adjectives, no \"not only X but Y\". It says what was built and what the candidate wants to do next, and stops. Under 240 words.",
   "- Cover letter, when asked: greeting, three or four paragraphs, closing. The closing is the sign-off words only (\"Sincerely,\" or \"Thank you for your time,\"); the name is printed under it by the page. Paragraph one names the role and one specific thing from the posting. The middle ties two or three concrete facts to what the posting asks for. The last says what the candidate wants to build there. It reads as the candidate typed it, follows the voice rules, and never claims to have done something the facts do not say. The company's own name and the posting's words are fine; nothing else that is not in the facts.",
   "- Plain words. No hype, no em dashes, no exclamation marks, no first-person in the resume bullets.",
 ].join("\n");
@@ -65,9 +66,33 @@ const REVIEW_RULES = [
   "Cut every sentence that says nothing specific. Each bullet starts with a verb and carries one fact. No bullet repeats another.",
   "The summary leads with the one thing from the facts that best answers what this posting asks for, in plain words.",
   "Skills: the posting's words first, then the rest; nothing the facts do not hold.",
-  "Cover letter: the first sentence names something specific about this posting or company, never 'I am applying for'. One paragraph ties two or three facts to the posting's own asks. The last paragraph says what the candidate wants to build there. Four paragraphs, each with something new.",
+  "Cover letter: the first sentence names something specific about this posting or company, never 'I am applying for'. One paragraph ties two or three facts to the posting's own asks. The last paragraph says what the candidate wants to build there. Three or four short paragraphs, each with something new, under 240 words in all.",
+  "Read the letter aloud as the candidate. Any sentence a 20 year old engineer would not say to another engineer gets rewritten in plain words or cut. No stock phrases, no dashes as punctuation, no semicolons, no exclamation marks.",
   "Keep every number and name exactly as in the facts. Add nothing. Remove any claim the facts do not support.",
 ];
+
+/**
+ * What in a cover letter reads as machine-written: a stock phrase, a dash used as punctuation, an
+ * exclamation mark, a sentence that runs on, a letter that runs long. Empty when it reads as typed.
+ */
+export function machineTells(t: Tailored): string[] {
+  const letter = t.coverLetter;
+  if (!letter) return [];
+  const text = [letter.greeting, ...letter.paragraphs, letter.closing].join("\n");
+  const lower = text.toLowerCase();
+  const tells: string[] = DOCUMENTS.machinePhrases.filter((p) => lower.includes(p)).map((p) => `the phrase "${p}"`);
+  if (/[\u2014\u2013]|\s-\s/.test(text)) tells.push("a dash used as punctuation");
+  if (text.includes("!")) tells.push("an exclamation mark");
+  if (/[;]/.test(text)) tells.push("a semicolon");
+  const sentences = letter.paragraphs.join(" ").split(/(?<=[.?])\s+/).filter(Boolean);
+  const long = sentences.filter((s) => s.split(/\s+/).length > DOCUMENTS.maxSentenceWords);
+  if (long.length) tells.push(`${long.length} sentence(s) over ${DOCUMENTS.maxSentenceWords} words`);
+  const words = letter.paragraphs.join(" ").split(/\s+/).length;
+  if (words > DOCUMENTS.maxLetterWords) tells.push(`${words} words, over ${DOCUMENTS.maxLetterWords}`);
+  const starts = letter.paragraphs.filter((p) => /^I\b/.test(p.trim())).length;
+  if (letter.paragraphs.length >= 3 && starts === letter.paragraphs.length) tells.push("every paragraph starts with I");
+  return tells;
+}
 
 /** The claims a draft makes that the profile does not hold: numbers, and capitalized names of tools, places and companies. */
 export function unsupportedClaims(t: Tailored, profile: Profile, posting: string): string[] {
@@ -190,11 +215,24 @@ async function tailorJobNow(profile: Profile, entry: QueueEntry, opts: { cover: 
     tailored = parse(await runWriter(reviewed, system, { purpose: "tailor", jobId: entry.job.id }));
   }
   let claims = unsupportedClaims(tailored, profile, posting);
-  if (claims.length) {
-    prompt = JSON.stringify({ job, write_cover_letter: opts.cover, remove_these_claims_the_facts_do_not_support: claims, previous_draft: tailored }, null, 1);
+  let tells = machineTells(tailored);
+  if (claims.length || tells.length) {
+    prompt = JSON.stringify(
+      {
+        job,
+        write_cover_letter: opts.cover,
+        ...(claims.length ? { remove_these_claims_the_facts_do_not_support: claims } : {}),
+        ...(tells.length ? { rewrite_the_cover_letter_without: tells, how: "Say the same things the way the candidate talks: short, plain, first person, the register of the voice rules. Do not swap one stock phrase for another." } : {}),
+        previous_draft: tailored,
+      },
+      null,
+      1,
+    );
     tailored = parse(await runWriter(prompt, system, { purpose: "tailor", jobId: entry.job.id }));
     claims = unsupportedClaims(tailored, profile, posting);
     if (claims.length) throw new Error(`the draft still claims what the profile does not say: ${claims.slice(0, 8).join(", ")}`);
+    tells = machineTells(tailored);
+    if (tells.length) throw new Error(`the cover letter still reads as machine-written: ${tells.slice(0, 5).join(", ")}`);
   }
   const dir = documentsDir(entry);
   mkdirSync(dir, { recursive: true });

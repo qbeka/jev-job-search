@@ -78,7 +78,7 @@ program
 
 // ------------------------------------------------------------------- apply
 
-type ApplyOptions = { count: number; dry?: boolean; submit?: boolean; fresh?: boolean; json?: boolean; tailor?: boolean; cover?: boolean };
+type ApplyOptions = { count: number; dry?: boolean; submit?: boolean; fresh?: boolean; json?: boolean; tailor?: boolean; cover?: boolean; plain?: boolean };
 
 /** A posting's link in place of an id is read, rated and queued first, so `apply <link> --submit` is one step. */
 async function idsFromLinks(given: string[]): Promise<string[]> {
@@ -98,7 +98,8 @@ async function idsFromLinks(given: string[]): Promise<string[]> {
 }
 
 /** What this run does about documents: a tailored resume on request, a cover letter on request or when the profile says when_asked. */
-const documentsFromOptions = (o: { tailor?: boolean; cover?: boolean }) => {
+const documentsFromOptions = (o: { tailor?: boolean; cover?: boolean; plain?: boolean }) => {
+  if (o.plain) return setDocumentPolicy({ resume: false, cover: false });
   const cover = !!o.cover || loadProfile().preferences.coverLetter === "when_asked";
   setDocumentPolicy({ resume: !!o.tailor || cover, cover });
 };
@@ -112,6 +113,7 @@ program
   .option("--fresh", "ignore the answer memory and ask Claude again")
   .option("--tailor", "write a resume for each job from your profile and attach that one instead of your file")
   .option("--cover", "also write a cover letter for a form that has a box for one, as a file or as text")
+  .option("--plain", "the profile's own resume and no cover letter, whatever the profile says")
   .option("--json")
   .action(async (given: string[], o: ApplyOptions) => {
     documentsFromOptions(o);

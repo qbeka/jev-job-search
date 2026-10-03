@@ -11,6 +11,14 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added
+- A cover letter is checked for what reads as machine-written (stock
+  phrases, a dash as punctuation, a semicolon, a sentence that runs on, a
+  letter that runs long) and sent back once to be rewritten in the person's
+  own register. The list is `DOCUMENTS.machinePhrases`.
+- `apply --plain`: the profile's own resume and no cover letter for one
+  run, whatever the profile says.
+
 ### Changed
 - One job at a time by default (`RUN.fillConcurrency` 1): open, fill, send,
   close, next. The pauses between submissions to one site are seconds, not

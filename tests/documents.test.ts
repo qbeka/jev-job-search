@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ProfileSchema } from "../src/profile/schema.js";
-import { Tailored, resumeMarkdown, trimOnce, unsupportedClaims } from "../src/documents/tailor.js";
+import { machineTells, Tailored, resumeMarkdown, trimOnce, unsupportedClaims } from "../src/documents/tailor.js";
 import { coverHtml, escapeHtml, pdfPages, resumeHtml } from "../src/documents/render.js";
 import { fileBoxWants } from "../src/forms/mapForm.js";
 
@@ -50,6 +50,20 @@ describe("the truth gate on a tailored draft", () => {
     const t = draft();
     t.skills.push("Rust");
     expect(unsupportedClaims(t, profile, "")).toContain("Rust");
+  });
+});
+
+describe("a cover letter that reads as machine-written", () => {
+  it("names the stock phrases, the dash and the long sentence, and passes plain writing", () => {
+    const t = draft();
+    expect(machineTells(t)).toEqual([]);
+    t.coverLetter!.paragraphs[0] = "I am excited to apply, and my background aligns with your mission \u2014 truly.";
+    const tells = machineTells(t);
+    expect(tells).toContain('the phrase "i am excited"');
+    expect(tells).toContain('the phrase "aligns with"');
+    expect(tells).toContain("a dash used as punctuation");
+    t.coverLetter!.paragraphs[0] = Array.from({ length: 40 }, () => "word").join(" ") + ".";
+    expect(machineTells(t).some((x) => x.includes("sentence(s) over"))).toBe(true);
   });
 });
 

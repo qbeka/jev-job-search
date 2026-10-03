@@ -268,6 +268,19 @@ export const DOCUMENTS = {
   templatesLocal: path.join(ROOT, "documents", "templates"),
   /** Which template is in use, kept in data/. */
   activeTemplate: path.join(ROOT, "data", "template.json"),
+  /**
+   * Phrases that mark a letter as machine-written. A cover letter that uses one is sent back once to
+   * be rewritten in the person's own register, and refused if it still does. Matched without case.
+   */
+  machinePhrases: [
+    "i am writing to", "i am excited", "i'm excited", "i am thrilled", "i'm thrilled", "i am passionate", "passionate about", "i believe i would", "i am confident that", "great fit", "perfect fit", "strong fit",
+    "aligns with", "aligned with", "resonates", "resonate with", "leverage", "utilize", "furthermore", "moreover", "additionally", "in conclusion", "in today's", "fast-paced", "cutting-edge", "innovative", "dynamic", "impactful",
+    "world-class", "best-in-class", "delve", "tapestry", "journey", "seamless", "robust", "spearheaded", "synergy", "eager to contribute", "contribute to your team", "hone my skills", "hit the ground running", "thrive",
+    "unique opportunity", "i look forward to hearing", "thank you for considering", "not only", "testament to", "deeply", "truly", "it is worth noting", "skill set", "wealth of experience",
+  ],
+  /** The longest a cover letter sentence may run, in words, and the longest letter. People write short. */
+  maxSentenceWords: 28,
+  maxLetterWords: 260,
   /** Words that may be capitalized in a sentence without being a claim about the candidate. */
   plainWords: ["I", "A", "An", "The", "My", "In", "At", "On", "For", "With", "And", "As", "To", "Of", "This", "That", "It", "We", "You", "Your", "Our", "If", "When", "While", "After", "Before", "Over", "Since", "Through", "Then", "There", "Here", "What", "Which", "Who", "How", "Why", "Yes", "No", "Dear", "Hi", "Hello", "Sincerely", "Best", "Regards", "Thank", "Thanks", "Team", "Hiring", "Manager", "Regarding", "Re"],
 } as const;
