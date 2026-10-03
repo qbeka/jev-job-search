@@ -124,6 +124,9 @@ describe("a search merged into the queue", () => {
     expect(by.has("Co4")).toBe(false);
     expect(by.get("Co5")?.status).toBe("submission_unknown");
     expect(by.get("Co6")?.status).toBe("queued");
+    // A posting text read on an earlier search is kept when this search did not read it again.
+    const kept = mergeDecided([entry(7, { status: "applied", job: { ...entry(7).job, description: "what the job is" } })], [{ job: job(7), fit: fit as never, reason: null }]);
+    expect(kept[0]?.job.description).toBe("what the job is");
     expect(KEPT_ON_REDISCOVERY).not.toContain("queued");
   });
 });

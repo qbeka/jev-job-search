@@ -123,7 +123,9 @@ export function mergeDecided(current: QueueEntry[], decided: Decided[]): QueueEn
   const byId = new Map(current.map((e) => [e.job.id, e]));
   const entries = decided.map((d) => {
     const before = byId.get(d.job.id);
-    const e = entryFor(d.job, d.fit, d.reason, before);
+    // A job that was not read again this time keeps the posting text it had: the writer needs it on a retry.
+    const job = !d.job.description && before?.job.description ? { ...d.job, description: before.job.description, ...(before.job.descriptionSource ? { descriptionSource: before.job.descriptionSource } : {}) } : d.job;
+    const e = entryFor(job as Job, d.fit, d.reason, before);
     // A rating that failed marks a job nobody settled as failed; one a run or a person settled keeps its status.
     if (d.failed && !(before && KEPT_ON_REDISCOVERY.includes(before.status))) {
       e.status = "failed";
