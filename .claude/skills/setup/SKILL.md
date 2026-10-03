@@ -141,5 +141,5 @@ left for them with the reason and the link.
 Tell them two things the tool will not do, so they are not surprised: it
 does not sign in to any site, and it does not pass a "prove you are human"
 check. Jobs behind a sign-in go on the by-hand list. A form waiting for an
-emailed code is closed and listed in `applications/manual.csv`; they can
-apply to those by hand.
+emailed code stays open for them to type the code, and `npx jev resume`
+records it.

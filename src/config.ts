@@ -41,8 +41,6 @@ export const PATHS = {
   manual: path.join(ROOT, "applications", "manual.csv"),
   /** Applications sent to a company that also wants a take-home assignment: the link and the instructions, for the person to do. */
   takehome: path.join(ROOT, "applications", "takehome.csv"),
-  /** How many applications have gone out since the runner's browsing data was last cleared. */
-  browsing: path.join(ROOT, "data", "runs", "browsing.json"),
   runs: path.join(ROOT, "data", "runs"),
   /** Short locks around read-modify-write of the records, and the lock a browser run holds. */
   locks: path.join(ROOT, "data", "runs", "locks"),
@@ -163,6 +161,14 @@ export const FORM = {
   autoConfidence: 0.9,
   /** Below this, Claude decides the field by hand. */
   reviewConfidence: 0.5,
+  /**
+   * Stricter rules for the answers that must be true. A checkbox is ticked at or above `tick` and
+   * left at or below `leave`; between the two a person decides. An answer about the right to work
+   * whose option is not a plain yes or no needs `authority` confidence.
+   */
+  gates: { tick: 0.7, leave: 0.3, authority: 0.85 },
+  /** An answer this short (or a plain yes or no) must be what the box shows, not merely inside it: "No" is not "Not applicable". */
+  shortAnswerChars: 3,
   /** Selects with more options than this are pre-filtered in code before JEV sees them. */
   maxOptionsForJev: 40,
   /** How many times a page is read again after a fill, for questions that only appear once another is answered. */
@@ -190,6 +196,8 @@ export const BROWSER = {
   profileDir: path.join(ROOT, "data", "runs", "chrome-profile"),
   /** Longest wait for a page to load and its form controls to stop changing. */
   settleMs: 15_000,
+  /** A form whose labels keep changing is taken as settled once its controls have held still for this many reads. */
+  settleCountPolls: 12,
   /** How long a loaded page with no form controls is given before it is read as having no form. */
   emptyPageMs: 6_000,
   /** Longest wait for a dropdown's options to appear after a click or typing. */
@@ -288,6 +296,27 @@ export const DOCUMENTS = {
   plainWords: ["I", "A", "An", "The", "My", "In", "At", "On", "For", "With", "And", "As", "To", "Of", "This", "That", "It", "We", "You", "Your", "Our", "If", "When", "While", "After", "Before", "Over", "Since", "Through", "Then", "There", "Here", "What", "Which", "Who", "How", "Why", "Yes", "No", "Dear", "Hi", "Hello", "Sincerely", "Best", "Regards", "Thank", "Thanks", "Team", "Hiring", "Manager", "Regarding", "Re"],
 } as const;
 
+/** Help for the person when a form waits on them (`src/run/assist.ts`). */
+export const ASSIST = {
+  /** Post a notification on the Mac. */
+  notify: true,
+  /** For an emailed human-check code, open the person's own mail at a search for it. The tool reads no mail for this. */
+  openMail: true,
+  mailSearchBase: "https://mail.google.com/mail/u/0/#search/",
+} as const;
+
+/** What a child process may inherit from the environment. Keys and passwords are not on the list, so no child ever sees one. */
+export const CHILD_ENV = {
+  allow: ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY"],
+} as const;
+
+/** The environment for a child process: the allowed names only, plus what the caller adds on purpose. */
+export function childEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const k of CHILD_ENV.allow) if (process.env[k] !== undefined) out[k] = process.env[k];
+  return { ...out, ...extra };
+}
+
 /** How files are written and locked (`src/util/store.ts`). */
 export const STORE = {
   /** How long a command waits for another command's write to finish. */
@@ -360,8 +389,12 @@ export const RUN = {
   submitGapMs: 5_000,
   /** The most pages of one form the tool will walk. A form that goes on longer is left for the person. */
   maxPages: 8,
-  /** After this many applications the runner's cookies, cache and site data are cleared, between runs, so one long session does not read as a robot. */
-  clearBrowsingEvery: 15,
+  /** How long `resume` watches one waiting form for the person to finish it. */
+  resumeWaitMs: 5 * 60_000,
+  /** A form kept open for the person is given up after this long: its session has usually expired by then. */
+  waitingExpiryHours: 12,
+  /** How long an abandoned fill is given to stop before its form is tried again. */
+  abortGraceMs: 5_000,
   /** How many times a form is opened and filled when values did not land. The second go comes when the other forms are done, with the window to itself. */
   fillAttempts: 2,
   /** Longest one form may take to open and fill. A page that never settles is recorded as blocked instead of holding up the run. */

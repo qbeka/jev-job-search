@@ -55,15 +55,37 @@ are not a robot" test or email you a code. Only you can do those.
 
 After several applications in a short time, Greenhouse sometimes emails
 an 8-character code and waits for it. BambooHR and JazzHR show a "confirm
-you are not a robot" check. The tool does not read a code, does not type
-it, and does not pass a robot check. It closes that form, lists the job in
-`applications/manual.csv` with the reason, and moves on, so a run is never
-stuck on you. Apply to those few by hand, or run `npx jev apply <id>
---submit` again later: boards stop asking after a while.
+you are not a robot" check. The tool does not read such a code, does not
+type it, and does not pass a robot check.
+
+What it does: the filled form stays open in its Chrome window, you get a
+notification, your own mail opens at a search for the code email, and the
+run goes on with the next job. When you have typed the code or passed the
+check and clicked Submit:
 
 ```bash
-npx jev log --manual
+npx jev resume
 ```
+
+It watches each waiting form, sees the confirmation, and records the
+application. A form left waiting for more than half a day is closed and
+moved to `applications/manual.csv`.
+
+### A click with no confirmation
+
+Now and then a board shows neither a confirmation nor the form after
+Submit: an error page, a blank page, a timeout. The application may or may
+not be with the employer, so the tool records it as unconfirmed, keeps the
+tab, and never fills or sends that job again by itself. To settle it:
+
+```bash
+npx jev reconcile
+```
+
+It reads the tab again. A confirmation records the application; the form
+still open means it was not sent. If the page proves neither, look for the
+employer's confirmation email and run `npx jev mark <id> --status applied`,
+or `--status queued` to try again.
 
 ## What the tool handles
 
@@ -109,11 +131,11 @@ date. It ranks the job lower and leaves the choice to you.
 
 | Job board | What to expect |
 |---|---|
-| Greenhouse | Works well. After several applications in a short time it sometimes emails a code to confirm a person is applying; that form is closed and listed for you, and the run goes on. |
+| Greenhouse | Works well. After several applications in a short time it sometimes emails a code to confirm a person is applying; that form stays open for you to type the code, and the run goes on. |
 | Ashby | Works well. Ashby saves each field as you type, so the tool fills these forms one field at a time, and one form at a time. |
 | Lever | Works well. |
 | Rippling, Workable | Works. Tested on a few forms each. |
-| BambooHR | Works. Its "confirm you are not a robot" check after Submit is yours: that form is closed and listed for you, and the run goes on. |
+| BambooHR | Works. Its "confirm you are not a robot" check after Submit is yours: that form stays open for you, and the run goes on. |
 | Jobvite, Tesla, and other forms that run over several pages | Works. The tool fills a page, checks it, clicks the form's own Next, and fills the next page, up to 8 pages. |
 | SmartRecruiters | Not supported yet. The tool cannot read its form. It skips these jobs. |
 | Workday, iCIMS, Taleo, Oracle, SuccessFactors, Amazon, LinkedIn, and any site that wants a sign-in | The tool does not sign in anywhere. It skips these jobs. If it meets a sign-in page during a run, it closes the page, puts the job on your by-hand list, and skips that site from then on. |

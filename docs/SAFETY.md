@@ -10,7 +10,8 @@ check before you publish a fork.*
 | Lying on a form. Work authorization, citizenship, education, graduation date and employment dates come from `data/profile.json` and are not changed to fit a posting. | `src/forms/mapForm.ts` resolves authorization per country in code; the `/apply` skill forbids overriding it |
 | Claiming a fact that is not in the profile. Free-text answers may use only `facts`, `experience`, `projects`, and the posting. | `data/voice.md`, `src/answers/context.ts`, the skill |
 | Creating accounts on careers portals. Workday, iCIMS, Taleo, Oracle, SuccessFactors and Amazon Jobs are filtered out before rating. | `src/jobs/hardFilters.ts` |
-| Passing a human check. This covers CAPTCHAs and the code a board emails to confirm a person is applying. The tool reads no email and types no code: the form is closed and the job listed in `applications/manual.csv`. | `submitJob` records the page as it is; `submitAndRecord` in `src/run/pipeline.ts` closes the tab and records the reason |
+| Passing a human check. This covers CAPTCHAs and the code a board emails to confirm a person is applying. The tool reads no email for these and types no code: the filled form stays open, the person is notified, and `resume` records the application once they finish. | `submitJob` reports the page as it is; `submitAndRecord` in `src/run/pipeline.ts` records `awaiting_user_action` and calls `assist` |
+| Sending an application twice. From the click on, a job is `submission_unknown` until a confirmation is read; it is never filled or sent again before that. A job already applied to is refused without `--resubmit`. | `submitAndRecord`, `reconcile` and `pickJobs` in `src/run/pipeline.ts` |
 | Signing in. A page with a password box is closed, the job is listed in `applications/manual.csv`, and the site is skipped from then on. No password is stored or typed. | `fillJob` in `src/browser/formRunner.ts`, `outcomeOf` in `src/run/outcome.ts` |
 | Signing a contract. A form that asks the candidate to type their name under an agreement, or to tick that they are bound by one, is set aside for them. | `SIGNATURE_LABEL` in `src/forms/mapForm.ts`, the writer's rules in `src/answers/resolve.ts` |
 | Submitting a form it has not verified. Every wanted value must be read back from the page and no required field may be empty. | `isReady`, `submitJob` in `src/browser/formRunner.ts` |
@@ -50,9 +51,16 @@ profile. The tool makes that the only way.
   the profile only, checked in code for any number or name the profile does
   not hold, and git-ignored.
 - The runner's Chrome profile lives in `data/runs/chrome-profile`, apart
-  from your own browser, with no saved logins. Its cookies, cache and site
-  data are cleared between runs after every `RUN.clearBrowsingEvery`
-  applications, never while a form is open.
+  from your own browser. It keeps its cookies between runs; nothing
+  clears them by itself. `npx jev browser reset --yes` clears them when you
+  ask. The window can be driven only from your own machine.
+- Every record is written whole (a temp file, then a rename) and every
+  change takes a short lock, so a dashboard, a search and a run can work at
+  the same time without losing each other's writes. Two browser runs at
+  once are refused.
+- Everything the tool prints passes a filter that replaces keys, tokens and
+  anything registered as secret. Child processes (Claude Code, Chrome) get
+  an environment with no keys in it.
 - JEV usage is appended to `data/runs/jev-usage.jsonl` (ids, token counts,
   cost; no content).
 - What the tool learns about sites (`data/knowledge.json`) holds host names,

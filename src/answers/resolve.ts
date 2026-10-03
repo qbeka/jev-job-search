@@ -7,7 +7,7 @@
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { z } from "zod";
-import { DOCUMENTS, PATHS, WRITER, writerBackend } from "../config.js";
+import { childEnv, DOCUMENTS, PATHS, WRITER, writerBackend } from "../config.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import type { Profile } from "../profile/schema.js";
 import { BANK_DRAFTS, BANK_INTENTS } from "./bank.js";
@@ -224,7 +224,7 @@ function callWriter(prompt: string, system: string, meta: { purpose: WriterCall[
     const child = spawn(
       WRITER.command,
       ["-p", "--model", WRITER.model, "--effort", effortFor(meta.purpose), "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", system],
-      { stdio: ["pipe", "pipe", "pipe"], cwd: WRITER.cwd, env: { ...process.env, ...WRITER.env } },
+      { stdio: ["pipe", "pipe", "pipe"], cwd: WRITER.cwd, env: childEnv(WRITER.env) },
     );
     let out = "";
     let err = "";

@@ -11,6 +11,7 @@ import { BROWSER, PATHS } from "../config.js";
 import { FieldsDump } from "../forms/fields.js";
 import { closeTab, listTargets, Page, sleep } from "./cdp.js";
 import { withStore, writeAtomic } from "../util/store.js";
+import { scrub } from "../util/redact.js";
 
 export const script = (name: string) => readFileSync(path.join(PATHS.browserScripts, name), "utf8");
 const SESSION = path.join(PATHS.runs, "browser-session.json");
@@ -40,7 +41,7 @@ export const mutateSession = (fn: (s: Session) => void): void =>
 
 /** Step timings on stderr when AWJ_TRACE is set. */
 export const trace = (line: string) => {
-  if (process.env.AWJ_TRACE) console.error(`[fill] ${line}`);
+  if (process.env.AWJ_TRACE) console.error(`[fill] ${scrub(line)}`);
 };
 
 export const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
@@ -49,25 +50,53 @@ export async function install(page: Page): Promise<void> {
   await page.evaluate(script("pageHelpers.js"));
 }
 
-/** Waits until the document is loaded and its form controls stop changing. A page with no controls yet gets longer: single-page forms render late. */
+/**
+ * What a page's form looks like at a glance: how many controls it has, and a short sum of the words
+ * on its labels and options. Two reads that agree mean the form has stopped changing.
+ * "interactive" is enough: a tracker or a font that never finishes loading must not hold the form up.
+ */
+export const SETTLE_EXPR = `(() => {
+  if (document.readyState === "loading") return "-1";
+  const n = document.querySelectorAll("input, select, textarea, [role=combobox]").length;
+  let h = 0;
+  for (const el of document.querySelectorAll("label, legend, option, [role=option]")) {
+    const t = el.textContent || "";
+    for (let i = 0; i < t.length && i < 80; i++) h = (h * 31 + t.charCodeAt(i)) | 0;
+  }
+  return n + ":" + h;
+})()`;
+
+/** The next step of the wait, from the last two reads. Pure, so it is tested without a browser. */
+export function settleStep(prev: { sig: string; stable: number; countStable: number }, sig: string): { sig: string; stable: number; countStable: number } {
+  const count = (s: string) => s.split(":")[0];
+  const ok = sig !== "-1";
+  return { sig, stable: ok && sig === prev.sig ? prev.stable + 1 : 0, countStable: ok && count(sig) === count(prev.sig) ? prev.countStable + 1 : 0 };
+}
+
+/**
+ * Waits until the document is loaded and its form stops changing: the same controls, the same
+ * labels and options, three reads in a row. A page with no controls yet gets longer, since
+ * single-page forms render late. A page whose words keep ticking (a clock, a counter) is taken as
+ * settled once its controls have held still for a while.
+ */
 export async function settle(page: Page): Promise<void> {
   const started = Date.now();
-  let last = -2;
-  let stable = 0;
+  let state = { sig: "", stable: 0, countStable: 0 };
   while (Date.now() - started < BROWSER.settleMs) {
     await sleep(BROWSER.pollMs);
-    let n = -1;
+    let sig = "-1";
     try {
-      // "interactive" is enough: a tracker or a font that never finishes loading must not hold the form up.
-      n = await page.evaluate<number>("document.readyState !== 'loading' ? document.querySelectorAll('input, select, textarea').length : -1");
+      sig = await page.evaluate<string>(SETTLE_EXPR);
     } catch {
-      n = -1; // mid-navigation
+      sig = "-1"; // mid-navigation
     }
-    stable = n >= 0 && n === last ? stable + 1 : 0;
-    last = n;
-    if (stable >= 3 && (n >= 3 || Date.now() - started > BROWSER.emptyPageMs)) break;
+    state = settleStep(state, sig);
+    const n = Number(sig.split(":")[0]);
+    const enough = n >= 3 || Date.now() - started > BROWSER.emptyPageMs;
+    if (state.stable >= 3 && enough) break;
+    if (state.countStable >= BROWSER.settleCountPolls && enough) break;
   }
-  trace(`settled in ${Date.now() - started}ms with ${last} controls`);
+  trace(`settled in ${Date.now() - started}ms at ${state.sig}`);
 }
 
 export async function dump(page: Page): Promise<FieldsDump> {

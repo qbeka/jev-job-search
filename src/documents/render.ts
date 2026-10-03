@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { BROWSER, DOCUMENTS, PATHS } from "../config.js";
+import { BROWSER, childEnv, DOCUMENTS, PATHS } from "../config.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import type { Profile } from "../profile/schema.js";
 import type { Tailored } from "./tailor.js";
@@ -101,7 +101,7 @@ export async function printPdf(html: string, outFile: string): Promise<number> {
   if (existsSync(outFile)) unlinkSync(outFile);
   // Chrome writes the PDF and may then linger, so the file is watched and Chrome is stopped once it is whole.
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(BROWSER.chromePath, ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-pdf-header-footer", `--print-to-pdf=${outFile}`, `--user-data-dir=${path.join(PATHS.runs, "print-profile")}`, `file://${htmlFile}`], { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(BROWSER.chromePath, ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-pdf-header-footer", `--print-to-pdf=${outFile}`, `--user-data-dir=${path.join(PATHS.runs, "print-profile")}`, `file://${htmlFile}`], { stdio: ["ignore", "ignore", "pipe"], env: childEnv() });
     let err = "";
     let done = false;
     const finish = (fail?: Error) => {

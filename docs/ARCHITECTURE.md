@@ -216,8 +216,36 @@ it aside for the person with a reason, or skip it. Set aside: a sign-in
 page, a form that asks for a signature, a required question the profile
 cannot answer, a form with more pages than `RUN.maxPages`, a form that would
 not move to its next page. In a sending run the tab is closed and the job
-goes into `applications/manual.csv`. A form waiting on an emailed code is the one
-exception: its tab is closed and the job is listed for the person with the reason.
+goes into `applications/manual.csv`. A form that stops at a human check is the
+exception: it stays open in `awaiting_user_action`, `assist` tells the person,
+and `resume` records the application when they finish.
+
+### Statuses (`src/jobs/queue.ts`)
+
+| Status | Meaning | Who sets it |
+|---|---|---|
+| `queued`, `skipped` | A search decided | `discover`, `apply <link>` |
+| `in_progress` | A run is working on it | `takeJobs` |
+| `applied` | A confirmation page was read | `submitAndRecord`, `resume`, `reconcile`, `check`, the person |
+| `needs_review`, `blocked`, `failed` | Set aside with a reason | `settle` |
+| `login_required` | The board wants a sign-in the tool has no account for | `settle` |
+| `registering`, `awaiting_email_verification`, `authenticated` | Stops on the way through a board with an account | the account adapter |
+| `awaiting_user_action` | The filled form is open and waits for the person | `submitAndRecord`, the account adapter |
+| `submission_unknown` | Submit was clicked and no confirmation was seen | `submitAndRecord`, before the click |
+
+A job a run owned (`RUN_OWNED`) with no run alive was interrupted: `sweep`
+puts it back in the queue when its tab is gone. A search never undoes a
+status other than `queued` (`KEPT_ON_REDISCOVERY`), and keeps a job that
+was sent or is waiting even when its posting has left every list
+(`mergeDecided` in `src/discover.ts`).
+
+### Files and locks (`src/util/store.ts`)
+
+`writeAtomic` replaces a file whole. `withStore` is a short file lock
+around a read-modify-write; `mutateQueue`, `mutateRows` and
+`mutateSession` are the only ways the records change. `acquireRun` is the
+lock a browser run holds for its whole length; a second run is refused,
+and the dashboard shows which run holds it.
 
 ## What the tool learns
 
@@ -233,9 +261,7 @@ the site wanted a sign-in or emailed a code.
 Before a page is filled, the same notes are read back. `applyFills` types
 straight into a control whose signature is known to need typing, and clicks
 a dropdown known to need clicking, instead of failing the quick way first.
-`learnedWalledHosts` feeds the sign-in sites to discover. A site that
-emailed a code today (`askingForCodeToday`) is passed over for the rest of
-the day: its jobs stay in the queue.
+`learnedWalledHosts` feeds the sign-in sites to discover.
 
 `loadKnowledge` merges the shipped file (`knowledge/sites.json`) with this
 machine's. `knowledge --share` writes the merged notes into the shipped

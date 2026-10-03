@@ -5,7 +5,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { REPORT } from "../config.js";
 import { mutateQueue, updateEntry } from "../jobs/queue.js";
-import { withStore } from "../util/store.js";
+import { currentRun, withStore } from "../util/store.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { buildReport, StatusChange } from "./data.js";
 import { reportPage } from "./page.js";
@@ -41,14 +41,28 @@ const send = (res: ServerResponse, status: number, type: string, body: string) =
   res.end(body);
 };
 
+/**
+ * True for a request from the dashboard's own page: the Host is this server on this machine, and
+ * a request that names where it came from (every POST from a browser does) names this server too.
+ */
+export function fromThisPage(req: Pick<IncomingMessage, "headers">, port: number): boolean {
+  const here = [`127.0.0.1:${port}`, `localhost:${port}`];
+  if (!here.includes(String(req.headers.host ?? ""))) return false;
+  const origin = req.headers.origin;
+  return origin === undefined || here.some((h) => origin === `http://${h}`);
+}
+
 /** Starts the server and returns the address it listens on. */
 export function startReportServer(port: number = REPORT.port): Promise<string> {
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
+      // Only this machine's own page may talk to the server: a web page elsewhere must not be able to read the records or change a status.
+      if (!fromThisPage(req, port)) return send(res, 403, "text/plain", "forbidden");
       if (req.method === "GET" && url.pathname === "/") return send(res, 200, "text/html; charset=utf-8", reportPage(null));
-      if (req.method === "GET" && url.pathname === "/api/data") return send(res, 200, "application/json", JSON.stringify(buildReport(loadRows())));
+      if (req.method === "GET" && url.pathname === "/api/data") return send(res, 200, "application/json", JSON.stringify({ ...buildReport(loadRows()), run: currentRun() }));
       if (req.method === "POST" && url.pathname === "/api/status") {
+        if (!/^application\/json/.test(String(req.headers["content-type"] ?? ""))) return send(res, 415, "text/plain", "send JSON");
         const parsed = StatusChange.safeParse(JSON.parse(await readBody(req)));
         if (!parsed.success) return send(res, 400, "application/json", JSON.stringify({ error: parsed.error.issues.map((i) => i.message).join("; ") }));
         const changed = applyStatusChange(parsed.data);

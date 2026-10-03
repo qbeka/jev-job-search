@@ -3,6 +3,8 @@
  * wants a day picked in a calendar, and the box then shows "May 1, 2027".
  * These helpers turn one into the other and tell whether two are the same day.
  */
+import { FORM } from "../config.js";
+
 export type Ymd = { year: number; month: number; day: number };
 
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
@@ -81,6 +83,10 @@ export function showsValue(want: string, shown: string): boolean {
   const s = norm(shown);
   if (!s) return false;
   if (w === s) return true;
+  // A short answer, or a plain yes or no, is the whole of what the box shows, or its first word before a comma or a dash.
+  if (w.length <= FORM.shortAnswerChars || /^(yes|no|true|false|none|n\/a)$/.test(w)) {
+    return s.startsWith(w) && /^\s*[,.;:(\-\u2013]/.test(s.slice(w.length));
+  }
   // One inside the other: a city shown with its region, a link shown without its scheme. A bare number is not loose like that.
   if ((/[a-z]/.test(w) || w.length >= 4) && (s.includes(w) || w.includes(s))) return true;
   // Numbers: the same digits, or a phone shown with the country code the box added in front.

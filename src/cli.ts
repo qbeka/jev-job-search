@@ -12,10 +12,14 @@ import { contextFingerprint } from "./answers/resolve.js";
 import { loadMemory, prune, saveMemory } from "./answers/memory.js";
 import { inspect, setValues } from "./browser/formRunner.js";
 import { loadReport, type Fill, type FillReport } from "./browser/report.js";
-import { closeJobTab } from "./browser/session.js";
+import { closeJobTab, loadSession } from "./browser/session.js";
+import { clearBrowsingData, ensureBrowser } from "./browser/cdp.js";
+import { acquireRun } from "./util/store.js";
+import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob } from "./browser/submit.js";
-import { loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { childEnv, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { installRedaction } from "./util/redact.js";
 import { discover } from "./discover.js";
 import { formatChecks, isReadyToRun, nextStep, runChecks } from "./doctor.js";
 import { JevClient } from "./jev/client.js";
@@ -30,11 +34,12 @@ import { addJob, looksLikeUrl } from "./jobs/addJob.js";
 import { buildReport } from "./report/data.js";
 import { reportPage } from "./report/page.js";
 import { startReportServer } from "./report/server.js";
-import { endIfAbandoned, noteApplied, pipeline, recordApplied, resolvePage, submitAndRecord, takeJobs, waitsForYou } from "./run/pipeline.js";
+import { endIfAbandoned, noteApplied, pipeline, reconcile, recordApplied, resolvePage, resume, submitAndRecord, sweep, takeJobs } from "./run/pipeline.js";
 import { brief, printFill, printTable } from "./run/print.js";
 import { limiter } from "./util/pace.js";
 
 loadEnv();
+installRedaction();
 // Output piped into a command that stops reading early (head, a pager) is not an error.
 process.stdout.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EPIPE") process.exit(0);
@@ -79,7 +84,19 @@ program
 
 // ------------------------------------------------------------------- apply
 
-type ApplyOptions = { count: number; dry?: boolean; submit?: boolean; fresh?: boolean; json?: boolean; tailor?: boolean; cover?: boolean; plain?: boolean };
+type ApplyOptions = { count: number; dry?: boolean; submit?: boolean; fresh?: boolean; json?: boolean; tailor?: boolean; cover?: boolean; plain?: boolean; resubmit?: boolean };
+
+/** Takes the browser for a command that drives it, tidies what an interrupted run left, and gives the lock back when the work ends. */
+async function inRun<T>(command: string, work: () => Promise<T>): Promise<T> {
+  const release = acquireRun(command);
+  try {
+    await ensureBrowser();
+    await sweep();
+    return await work();
+  } finally {
+    release();
+  }
+}
 
 /** A posting's link in place of an id is read, rated and queued first, so `apply <link> --submit` is one step. */
 async function idsFromLinks(given: string[]): Promise<string[]> {
@@ -92,7 +109,8 @@ async function idsFromLinks(given: string[]): Promise<string[]> {
     }
     jev ??= new JevClient();
     const e = await addJob(jev, loadProfile(), g);
-    console.log(`${e.job.id}  ${e.job.company} | ${e.job.title}  (fit ${e.fit?.score.toFixed(2) ?? "?"}${e.status === "applied" ? ", already applied" : ""})`);
+    console.log(`${e.job.id}  ${e.job.company} | ${e.job.title}  (fit ${e.fit?.score.toFixed(2) ?? "?"})`);
+    // A link to a job that was sent, or may have been, is passed on all the same: takeJobs refuses it and says why.
     out.push(e.job.id);
   }
   return out;
@@ -115,22 +133,28 @@ program
   .option("--tailor", "write a resume for each job from your profile and attach that one instead of your file")
   .option("--cover", "also write a cover letter for a form that has a box for one, as a file or as text")
   .option("--plain", "the profile's own resume and no cover letter, whatever the profile says")
+  .option("--resubmit", "let a job you already applied to be filled and sent again. Never needed in normal use")
   .option("--json")
   .action(async (given: string[], o: ApplyOptions) => {
     documentsFromOptions(o);
-    const ids = await idsFromLinks(given);
     const began = new Date().toISOString();
-    const { reports, sent } = await pipeline(takeJobs(ids, { count: o.count, dry: !!o.dry }), { submit: !!o.submit, dry: !!o.dry, fresh: !!o.fresh, quiet: !!o.json });
-    if (o.json) console.log(JSON.stringify(reports, null, 2));
-    if (!o.dry) {
-      await noteApplied(sent);
-      const done = new Map(loadQueue().entries.map((e) => [e.job.id, e]));
-      const count = (...statuses: string[]) => reports.filter((r) => statuses.includes(done.get(r.jobId)?.status ?? "")).length;
-      const codes = reports.filter((r) => waitsForYou(done.get(r.jobId)?.statusReason)).length;
-      console.log(`\n${count("applied")} applied, ${count("needs_review", "blocked")} left for you, ${count("skipped", "failed")} skipped, ${count("in_progress")} filled and waiting for submit`);
-      if (codes) console.log(`${codes} form(s) stopped at a human check (an emailed code or a robot check). They are in applications/manual.csv; apply to those by hand, or try them again later.`);
-      console.log(whereTheRecordIs());
-    }
+    await inRun(`apply${o.submit ? " --submit" : ""}${o.dry ? " --dry" : ""}`, async () => {
+      const ids = await idsFromLinks(given);
+      if (given.length && !ids.length) return;
+      const entries = takeJobs(ids, { count: o.count, dry: !!o.dry, resubmit: !!o.resubmit });
+      if (given.length && !entries.length) return;
+      const { reports, sent } = await pipeline(entries, { submit: !!o.submit, dry: !!o.dry, fresh: !!o.fresh, quiet: !!o.json });
+      if (o.json) console.log(JSON.stringify(reports, null, 2));
+      if (!o.dry) {
+        await noteApplied(sent);
+        const done = new Map(loadQueue().entries.map((e) => [e.job.id, e]));
+        const count = (...statuses: string[]) => reports.filter((r) => statuses.includes(done.get(r.jobId)?.status ?? "")).length;
+        console.log(`\n${count("applied")} applied, ${count("needs_review", "blocked", "login_required")} left for you, ${count("skipped", "failed")} skipped, ${count("in_progress")} filled and waiting for submit`);
+        if (count("awaiting_user_action")) console.log(`${count("awaiting_user_action")} form(s) are open and waiting for you (an emailed code, a robot check). Finish each in the tool's window, then run: npx jev resume`);
+        if (count("submission_unknown")) console.log(`${count("submission_unknown")} form(s) were clicked and not confirmed. They will not be sent again until settled: npx jev reconcile`);
+        console.log(whereTheRecordIs());
+      }
+    });
     if (!o.json) console.log(`\nCost of this run\n${formatCost(loadCost(began))}`);
     endIfAbandoned();
   });
@@ -145,7 +169,7 @@ program
   .option("--json")
   .action(async (ids: string[], o: ApplyOptions) => {
     documentsFromOptions(o);
-    const { reports } = await pipeline(takeJobs(ids, { count: o.count, dry: !!o.dry }), { submit: false, dry: !!o.dry, fresh: false, quiet: !!o.json, fillOnly: true });
+    const { reports } = await inRun("fill", () => pipeline(takeJobs(ids, { count: o.count, dry: !!o.dry }), { submit: false, dry: !!o.dry, fresh: false, quiet: !!o.json, fillOnly: true }));
     if (o.json) console.log(JSON.stringify(reports, null, 2));
     endIfAbandoned();
   });
@@ -168,7 +192,7 @@ program
         if (d.cover) console.log(`   cover letter: ${d.cover}`);
         if (d.tailored.keywordsCovered.length) console.log(`   covers: ${d.tailored.keywordsCovered.slice(0, 12).join(", ")}`);
         if (d.tailored.keywordsMissing.length) console.log(`   the posting also wants, and your profile does not say: ${d.tailored.keywordsMissing.slice(0, 8).join(", ")}`);
-        if (o.open) for (const f of [d.resume, d.cover]) if (f) spawn("open", [f], { stdio: "ignore", detached: true }).unref();
+        if (o.open) for (const f of [d.resume, d.cover]) if (f) spawn("open", [f], { stdio: "ignore", detached: true, env: childEnv() }).unref();
       } catch (err) {
         console.log(`== ${e.job.company} | ${e.job.title} [${e.job.id}]  not written: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -188,12 +212,12 @@ program
     if (o.static) {
       writeFileSync(o.static, reportPage(buildReport(loadRows())));
       console.log(`Wrote ${o.static}`);
-      if (o.open) spawn("open", [o.static], { stdio: "ignore", detached: true }).unref();
+      if (o.open) spawn("open", [o.static], { stdio: "ignore", detached: true, env: childEnv() }).unref();
       return;
     }
     const address = await startReportServer(o.port);
     console.log(`Dashboard at ${address}  (Ctrl-C to stop)`);
-    if (o.open) spawn("open", [address], { stdio: "ignore", detached: true }).unref();
+    if (o.open) spawn("open", [address], { stdio: "ignore", detached: true, env: childEnv() }).unref();
   });
 
 program
@@ -240,8 +264,70 @@ program
   .action(async (ids: string[], o: { keepOpen?: boolean; force?: boolean }) => {
     const jev = new JevClient();
     const sent: string[] = [];
-    for (const id of ids) if (await submitAndRecord(jev, id, !!o.force, !!o.keepOpen)) sent.push(id);
+    await inRun("submit", async () => {
+      const unknown = new Set(loadQueue().entries.filter((e) => e.status === "submission_unknown").map((e) => e.job.id));
+      for (const id of ids) {
+        if (unknown.has(id)) console.log(`${id}  not sent: Submit was clicked on this form before and no confirmation was seen. Settle it first: npx jev reconcile ${id}`);
+        else if (await submitAndRecord(jev, id, !!o.force, !!o.keepOpen)) sent.push(id);
+      }
+    });
     await noteApplied(sent);
+  });
+
+program
+  .command("resume [ids...]")
+  .description("Watch the forms that were left open for you while you finish them (an emailed code, a robot check), and record each application when its confirmation shows. Nothing is typed or clicked for you")
+  .action(async (ids: string[]) => {
+    const jev = new JevClient();
+    const sent: string[] = [];
+    await inRun("resume", async () => {
+      const waiting = loadQueue().entries.filter((e) => e.status === "awaiting_user_action" && (!ids.length || ids.includes(e.job.id)));
+      if (!waiting.length) return console.log("No form is waiting for you.");
+      let skip = false;
+      if (process.stdin.isTTY) process.stdin.on("data", () => (skip = true));
+      for (const [i, e] of waiting.entries()) {
+        console.log(`\n${i + 1} of ${waiting.length}: ${e.job.company} | ${e.job.title}`);
+        console.log(`  In the tool's Chrome window: ${waitingWords(e.waitingFor ?? "unknown")}.${process.stdin.isTTY ? " Press Enter here to skip this one." : ""}`);
+        skip = false;
+        const outcome = await resume(jev, e.job.id, { stop: () => skip });
+        if (outcome === "applied") sent.push(e.job.id);
+        console.log(outcome === "applied" ? "  Sent and recorded." : outcome === "gone" ? "  Its tab was closed. It is on your by-hand list." : "  Not sent yet. It stays open; run resume again when you are ready.");
+      }
+      if (process.stdin.isTTY) process.stdin.pause();
+    });
+    await noteApplied(sent);
+  });
+
+program
+  .command("reconcile [ids...]")
+  .description("Settle the forms whose Submit was clicked with no confirmation seen: read what each tab shows now, and record it as applied or as not sent. A form that proves neither stays unconfirmed for you to settle with mark")
+  .action(async (ids: string[]) => {
+    const jev = new JevClient();
+    const sent: string[] = [];
+    await inRun("reconcile", async () => {
+      const unknown = loadQueue().entries.filter((e) => e.status === "submission_unknown" && (!ids.length || ids.includes(e.job.id)));
+      if (!unknown.length) return console.log("No submission is waiting to be confirmed.");
+      for (const e of unknown) {
+        const outcome = await reconcile(jev, e.job.id).catch(() => "unknown" as const);
+        if (outcome === "applied") sent.push(e.job.id);
+        console.log(`${e.job.id}  ${e.job.company} | ${e.job.title}: ${outcome === "applied" ? "confirmed, recorded as applied" : outcome === "not_sent" ? "the form is still open, so it was not sent. It is on your by-hand list" : `cannot tell. Look for a confirmation email from ${e.job.company}, then run: npx jev mark ${e.job.id} --status applied, or --status queued to try again`}`);
+      }
+    });
+    await noteApplied(sent);
+  });
+
+program
+  .command("browser <action>")
+  .description("browser reset: clear the cookies, cache and site data of the tool's own Chrome. This signs it out of every site. Use it only when a site misbehaves")
+  .option("--yes", "do it without asking")
+  .action(async (action: string, o: { yes?: boolean }) => {
+    if (action !== "reset") return console.log("The only action is: browser reset");
+    if (!o.yes) return console.log("This clears every cookie and sign-in in the tool's own Chrome (your everyday browser is not touched). To go ahead: npx jev browser reset --yes");
+    await inRun("browser reset", async () => {
+      if (Object.keys(loadSession()).length) return console.log("Forms are still open in the tool's window. Finish or close them first (npx jev resume, npx jev close <id>).");
+      await clearBrowsingData();
+      console.log("Cleared the cookies, cache and site data of the tool's Chrome.");
+    });
   });
 
 // ------------------------------------------------------ forms left for you
@@ -326,7 +412,7 @@ program
     const file = o.all ? PATHS.applications : o.manual ? PATHS.manual : PATHS.applied;
     if (o.open) {
       if (!existsSync(file)) return console.log(`Nothing to open yet. ${file} is created by the first discover run.`);
-      if (process.platform === "darwin") spawn("open", [file], { stdio: "ignore", detached: true }).unref();
+      if (process.platform === "darwin") spawn("open", [file], { stdio: "ignore", detached: true, env: childEnv() }).unref();
       return console.log(file);
     }
     if (o.manual) {

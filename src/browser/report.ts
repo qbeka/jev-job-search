@@ -5,6 +5,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { writeAtomic } from "../util/store.js";
+import { showsValue } from "../util/dates.js";
 import path from "node:path";
 import { FORM, PATHS } from "../config.js";
 import type { FieldsDump, FillPlan } from "../forms/fields.js";
@@ -123,6 +124,23 @@ export function emptyRequiredFields(d: FieldsDump, plan: FillPlan, shown: string
 }
 
 export const emptyRequired = (d: FieldsDump, plan: FillPlan, shown: string[], states: ControlState[]) => emptyRequiredFields(d, plan, shown, states).map((f) => f.label);
+
+/**
+ * True when a control shows what it was given. A box is compared in the shape the site writes it
+ * (showsValue); a choice by the option that was picked; a checkbox by whether it is ticked.
+ * Anything else only has to show something.
+ */
+export function showsPlanned(f: { kind: string; value: string | null; optionLabel?: string | null }, shown: string): boolean {
+  const value = f.value ?? "";
+  const n = (x: string) => x.toLowerCase().replace(/\s+/g, " ").trim();
+  if (f.kind === "checkbox") return /^(true|yes|1|on|checked)$/i.test(value) ? !!shown : !shown;
+  if (f.kind === "radio" || f.kind === "select") {
+    const expect = [f.optionLabel, value].filter((x): x is string => !!x);
+    return !!shown && expect.some((e) => n(e) === n(shown) || showsValue(e, shown));
+  }
+  if (["text", "email", "tel", "url", "number", "textarea", "combobox", "date"].includes(f.kind)) return showsValue(value, shown);
+  return !!shown;
+}
 
 type Open = Pick<FillReport, "state" | "drafts" | "reviews" | "failed" | "missingRequired">;
 

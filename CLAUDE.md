@@ -41,18 +41,32 @@ doctor` says what is in place and what to do next.
   is blocked: the tab is closed, the job goes on the by-hand list
   (`applications/manual.csv`), and the site is noted so the next discover skips it. The
   tool creates no accounts, stores no site passwords and solves no CAPTCHAs.
-- **A human check is the person's to pass.** That includes a code a board
-  emails to confirm a person is applying. No code is ever read from mail or
-  typed into a form, by the tool or by you. The form is closed, the job is
-  listed in `applications/manual.csv` with the reason, and the run moves
-  on. Nothing waits on the person.
+- **A human check is the person's to pass.** That includes a CAPTCHA and
+  a code a board emails to confirm a person is applying. No such code is
+  ever read from mail or typed into a form, by the tool or by you. The
+  filled form stays open (`awaiting_user_action`), the person is told
+  (`src/run/assist.ts`: a notification, the tab in front, their own mail
+  opened at a search for the code), and the run moves on. `resume` records
+  the application once they finish.
+- **Never send twice.** From the moment Submit is clicked the application
+  may be with the employer. The job is recorded `submission_unknown` before
+  the click and is never filled or sent again until a confirmation,
+  `reconcile` or the person settles it. A job that was applied to is
+  refused unless `--resubmit` is given on purpose.
+- **One writer at a time, whole files only.** Every record is written by
+  `writeAtomic`, and every read-modify-write goes through `mutateQueue`,
+  `mutateRows` or `mutateSession` under the store lock
+  (`src/util/store.ts`). A command that drives the browser holds the run
+  lock. Never write `data/queue.json` or a CSV any other way.
 - **What the tool cannot finish truthfully, it sets aside.** A form that
   asks for a signature, or for something the profile does not say, is
   closed and listed in `applications/manual.csv` with the reason (`src/run/outcome.ts`).
   It is never answered to get it through.
 - **No secrets in code or logs.** The OpenRouter key is read from `.env` by
-  `src/config.ts` and nowhere else. Error output is redacted in
-  `src/jev/client.ts`; keep it that way.
+  `src/config.ts` and nowhere else. Everything printed goes through
+  `scrub` (`src/util/redact.ts`), links are kept as `safeUrl`, and every
+  child process is started with `childEnv()`, an allow-list that holds no
+  key. A test fails on a spawn without it. Keep it that way.
 - **JEV decides, code acts, Claude writes.** Anything that is a typed
   question (which field, which option, which page, how good a fit) goes
   through JEV with criteria written as definitions. Free text and the fields

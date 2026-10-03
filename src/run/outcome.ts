@@ -32,7 +32,7 @@ export function outcomeOf(r: FillReport, maxPages: number): Outcome {
   if (r.sent) return { action: "applied", reason: null, rememberSite: false };
   if (r.state === "blocked") {
     const reason = r.reason ?? "no form found";
-    if (reason === SIGN_IN_REASON || /login_required/.test(reason)) return { action: "blocked", reason: SIGN_IN_REASON, rememberSite: true };
+    if (reason === SIGN_IN_REASON || /login_required/.test(reason)) return { action: "login_required", reason: SIGN_IN_REASON, rememberSite: true };
     // A posting that has closed is not something the person can do by hand either.
     if (/page looks like: closed/.test(reason)) return { action: "skipped", reason: "the posting has closed", rememberSite: false };
     return { action: "blocked", reason, rememberSite: /page looks like: job_description/.test(reason) };

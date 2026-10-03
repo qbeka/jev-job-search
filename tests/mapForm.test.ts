@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ProfileSchema } from "../src/profile/schema.js";
 import { PROFILE_KEYS, profileFacts, valueFor } from "../src/profile/fieldKeys.js";
-import { authForCountry, educationDatePlan, employmentDatePlan, hasChoosableOptions, isSlotChoice, planField, questionsFor, sectionOf, valueForJob, fileBoxWants } from "../src/forms/mapForm.js";
+import { approvesAgreements, authForCountry, categoryOf, educationDatePlan, employmentDatePlan, fileBoxWants, gateAnswer, hasChoosableOptions, isSlotChoice, planField, questionsFor, sectionOf, valueForJob } from "../src/forms/mapForm.js";
 import { FieldsDump, isApplicationForm, type DumpedField } from "../src/forms/fields.js";
 import type { Job } from "../src/jobs/normalize.js";
 
@@ -63,6 +63,44 @@ describe("questionsFor", () => {
     expect(planField(field({ kind: "tel", label: "Phone Number" }), undefined, profile, j)).toMatchObject({ action: "fill", value: "5555550123" });
     expect(planField(field({ kind: "tel", label: "Phone", placeholder: "+1 555 555 5555" }), undefined, profile, j)).toMatchObject({ action: "fill", value: "+15555550123" });
     expect(planField(field({ kind: "email", label: "Personal Email" }), undefined, profile, j)).toMatchObject({ action: "fill", value: "ada@example.com" });
+  });
+  it("never puts the applicant's details in a box that asks for another person's", () => {
+    const j = job(["Toronto, ON"]);
+    expect(planField(field({ kind: "email", label: "Reference email" }), undefined, profile, j)).toMatchObject({ action: "skip", value: null });
+    expect(planField(field({ kind: "tel", label: "Phone", section: "Emergency contact", required: true }), undefined, profile, j)).toMatchObject({ action: "review", value: null });
+    expect(planField(field({ kind: "tel", label: "Supervisor's phone number" }), undefined, profile, j)).toMatchObject({ action: "skip" });
+    expect(categoryOf(field({ kind: "email", label: "Email", section: "Personal information" }))).toBe("general");
+  });
+  it("holds an answer about the right to work to the profile, for the country the question means", () => {
+    const yesNo = [{ value: "1", label: "Yes" }, { value: "0", label: "No" }];
+    const pick = (choice: string, confidence = 0.95) => ({ type: "choice", choice, confidence, probabilities: {} }) as never;
+    const us = job(["New York, NY"]);
+    const ca = job(["Toronto, ON"]);
+    const auth = field({ kind: "select", label: "Are you legally authorized to work in the United States?", options: yesNo, required: true });
+    // The example profile is authorized in Canada only.
+    expect(planField(auth, pick("o1"), profile, us)).toMatchObject({ action: "fill", optionLabel: "No" });
+    expect(planField(auth, pick("o0"), profile, us)).toMatchObject({ action: "review" });
+    const sponsor = field({ kind: "radio", label: "Will you now or in the future require sponsorship?", options: yesNo, required: true });
+    expect(planField(sponsor, pick("o0"), profile, us)).toMatchObject({ action: "fill", optionLabel: "Yes" });
+    expect(planField(sponsor, pick("o0"), profile, ca)).toMatchObject({ action: "review" });
+    // A question that names no country, on a posting whose country is unclear, is the person's.
+    const vague = field({ kind: "select", label: "Are you legally authorized to work in the country of this job?", options: yesNo, required: true });
+    expect(planField(vague, pick("o0"), profile, job(["Remote"]))).toMatchObject({ action: "review" });
+    expect(gateAnswer(auth, "Yes", profile, us)).toMatch(/does not match the profile/);
+    expect(gateAnswer(auth, "No", profile, us)).toBeNull();
+    expect(gateAnswer(field({ kind: "text", label: "Favourite language" }), "Yes", profile, us)).toBeNull();
+    expect(categoryOf(field({ kind: "select", label: "Are you authorized to work in Canada without sponsorship?" }))).toBe("authorization");
+    expect(valueForJob(profile, job(["Remote"]), "authorized_to_work")).toBeNull();
+    expect(valueForJob(profile, job(["Remote"]), "authorized_to_work", "Are you authorized to work in Canada?")).toBe("Yes");
+  });
+  it("ticks an agreement only when it is routine or the person's standing answers allow it", () => {
+    const j = job(["Toronto, ON"]);
+    const sure = { type: "noul", noul: 0.95, confidence: 0.95 } as never;
+    expect(planField(field({ kind: "checkbox", label: "I certify that the information above is true and complete" }), sure, profile, j)).toMatchObject({ action: "fill" });
+    expect(planField(field({ kind: "checkbox", label: "I agree to the Arbitration Agreement" }), sure, profile, j)).toMatchObject({ action: "review" });
+    const allowed = { ...profile, answers: [...profile.answers, { question: "Arbitration agreements, terms and acknowledgements", answer: "I agree. Tick every box needed to submit." }] };
+    expect(planField(field({ kind: "checkbox", label: "I agree to the Arbitration Agreement" }), sure, allowed, j)).toMatchObject({ action: "fill" });
+    expect(approvesAgreements(profile)).toBe(false);
   });
   it("puts the section into the question", () => {
     const q = questionsFor([field({ id: "s", kind: "text", label: "Start Date", section: "Education" })]);

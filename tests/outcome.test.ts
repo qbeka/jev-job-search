@@ -10,8 +10,8 @@ describe("what becomes of a job", () => {
     expect(outcomeOf(filled(), 8)).toEqual({ action: "send", reason: null, rememberSite: false });
   });
   it("is left for the person, and its site crossed out, when the site wants a sign-in", () => {
-    expect(outcomeOf(blockedReport(job, SIGN_IN_REASON), 8)).toEqual({ action: "blocked", reason: SIGN_IN_REASON, rememberSite: true });
-    expect(outcomeOf(blockedReport(job, "no form found, page looks like: login_required"), 8)).toMatchObject({ action: "blocked", reason: SIGN_IN_REASON, rememberSite: true });
+    expect(outcomeOf(blockedReport(job, SIGN_IN_REASON), 8)).toEqual({ action: "login_required", reason: SIGN_IN_REASON, rememberSite: true });
+    expect(outcomeOf(blockedReport(job, "no form found, page looks like: login_required"), 8)).toMatchObject({ action: "login_required", reason: SIGN_IN_REASON, rememberSite: true });
   });
   it("is skipped, not left for the person, when the posting has closed", () => {
     expect(outcomeOf(blockedReport(job, "no form found, page looks like: closed"), 8)).toEqual({ action: "skipped", reason: "the posting has closed", rememberSite: false });

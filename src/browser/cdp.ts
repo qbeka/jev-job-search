@@ -6,7 +6,8 @@
  */
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { BROWSER } from "../config.js";
+import { BROWSER, childEnv } from "../config.js";
+import { safeUrl } from "../util/redact.js";
 
 export type Target = { id: string; type: string; url: string; title: string; webSocketDebuggerUrl: string };
 
@@ -30,6 +31,8 @@ export async function ensureBrowser(): Promise<void> {
     BROWSER.chromePath,
     [
       `--remote-debugging-port=${BROWSER.port}`,
+      // The window can be driven only from this machine.
+      "--remote-debugging-address=127.0.0.1",
       `--user-data-dir=${BROWSER.profileDir}`,
       "--no-first-run",
       "--no-default-browser-check",
@@ -40,7 +43,7 @@ export async function ensureBrowser(): Promise<void> {
       "--window-size=1280,1000",
       "about:blank",
     ],
-    { detached: true, stdio: "ignore" },
+    { detached: true, stdio: "ignore", env: childEnv() },
   );
   child.unref();
   for (let i = 0; i < 60; i++) {
@@ -117,6 +120,7 @@ export class Page {
   private inflight = new Set<string>();
   /** The address of the page itself, kept current so a widget's own frame is not mistaken for the form. */
   private mainUrl = "";
+  private closed = false;
   private constructor(private ws: WebSocket, readonly targetId: string) {}
 
   static async attach(target: Target): Promise<Page> {
@@ -137,6 +141,12 @@ export class Page {
       page.pending.delete(m.id);
       if (m.error) p.reject(new Error(m.error.message));
       else p.resolve(m.result);
+    };
+    // A tab that is closed under a fill (a timeout, the person closing it) fails every call still waiting, so the fill stops.
+    ws.onclose = () => {
+      page.closed = true;
+      for (const p of page.pending.values()) p.reject(new Error("the tab was closed"));
+      page.pending.clear();
     };
     await page.send("Page.enable");
     await page.send("Runtime.enable");
@@ -163,7 +173,8 @@ export class Page {
     if (method === "Network.requestWillBeSent") {
       const req = params.request as { url: string; method: string };
       if (!/^(POST|PUT|PATCH)$/.test(req.method) || !isFormWrite(req.url, this.mainUrl || String(params.documentURL ?? ""))) return;
-      this.writes.set(id, { url: req.url, status: null, failed: false });
+      // Kept without its query string: that is where a site puts a token, and this text reaches reports and site notes.
+      this.writes.set(id, { url: safeUrl(req.url), status: null, failed: false });
       this.inflight.add(id);
     } else if (method === "Network.responseReceived" && this.writes.has(id)) {
       // An answer is what matters. Waiting for the body to finish would hang on a stream that never closes.
@@ -198,6 +209,7 @@ export class Page {
   }
 
   send<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    if (this.closed) return Promise.reject(new Error("the tab was closed"));
     return new Promise<T>((resolve, reject) => {
       const id = ++this.seq;
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });

@@ -12,6 +12,20 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Added
+- `resume`: a form that stops at a human check (an emailed code, a robot
+  check) stays open and filled. The person gets a notification, their own
+  mail opens at a search for the code, and `resume` records the application
+  when they finish. The tool still reads and types no such code.
+- `reconcile` and the `submission_unknown` status: from the click on, an
+  application may be with the employer, so the job is recorded as
+  unconfirmed first and is never filled or sent again until settled.
+- `apply --resubmit`: a job that was applied to is refused by id or link
+  unless this is given.
+- `browser reset --yes`: clears the tool's own Chrome when asked.
+- New statuses for boards with accounts (`login_required`, `registering`,
+  `awaiting_email_verification`, `authenticated`, `awaiting_user_action`).
+- The dashboard has a "Waiting for you" tab and an "Unconfirmed" count, and
+  answers only its own page.
 - A cover letter is checked for what reads as machine-written (stock
   phrases, a dash as punctuation, a semicolon, a sentence that runs on, a
   letter that runs long) and sent back once to be rewritten in the person's
@@ -20,6 +34,28 @@ changed for a person using the tool and what changed for a contributor.
   run, whatever the profile says.
 
 ### Changed
+- Every record is written whole and every change takes a short lock. A
+  search merges into the queue as it is when the search ends, and keeps a
+  job that was sent or is waiting even when its posting has left the lists.
+  Two browser runs at once are refused.
+- Every control is compared with what it was given, choices and checkboxes
+  included, after the fill and again right before Submit, with the
+  attached file checked too. A short answer must be the whole answer:
+  "No" is not "Not applicable".
+- An email or phone box that asks for another person (a reference, a
+  supervisor, an emergency contact) is never given the applicant's.
+- An answer about the right to work must say what the profile says for the
+  country the question means, whoever gave it: JEV, the writer or the
+  memory. When the country cannot be told, the answer is the person's.
+- An agreement is ticked only when it is routine (the application is true,
+  a privacy notice) or the person's standing answers allow it.
+- A fill that runs out of time is stopped and cannot write over the retry.
+- Child processes get an environment with no keys in it, everything printed
+  passes a redaction filter, and saved links lose their query strings.
+- A page is settled when its labels and options stop changing, not only
+  its number of controls.
+- A footer "protected by reCAPTCHA" is no longer taken for a robot check.
+- A sign-in page is recorded as `login_required`.
 - One job at a time by default (`RUN.fillConcurrency` 1): open, fill, send,
   close, next. The pauses between submissions to one site are seconds, not
   most of a minute, since one job at a time is already the pacing. The next
@@ -28,6 +64,11 @@ changed for a person using the tool and what changed for a contributor.
   the profile's own words, so "REST APIs" or "18,000+" no longer refuse a
   draft. A draft it does refuse no longer blocks the job: the profile's own
   resume is sent instead, and the run says so.
+
+### Removed
+- Automatic clearing of the browser's cookies after a number of
+  applications. It signed the tool out of everything.
+- The rule that closed a form at a human check. The form now stays open.
 
 ## [1.2.1] - 2026-10-02
 

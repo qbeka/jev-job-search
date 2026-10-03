@@ -8,7 +8,7 @@
 import path from "node:path";
 import { BROWSER, FORM, MEMORY, RUN } from "../config.js";
 import { isApplicationForm, type DumpedField, type FieldsDump, type FillPlan } from "../forms/fields.js";
-import { hasChoosableOptions, mapForm } from "../forms/mapForm.js";
+import { gateAnswer, hasChoosableOptions, mapForm } from "../forms/mapForm.js";
 import { decidePageState } from "../forms/pageState.js";
 import type { JevClient } from "../jev/client.js";
 import { applyUrlFor, greenhouseFallbackUrl, type Job } from "../jobs/normalize.js";
@@ -20,8 +20,7 @@ import { closeTab, ensureBrowser, newTab, Page, sleep } from "./cdp.js";
 import { candidateOptions, closestOptions, readDropdownOptions } from "./dropdowns.js";
 import { applyFills, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
 import { learn, notesFor, signatureOf, type Method } from "../knowledge/sites.js";
-import { showsValue } from "../util/dates.js";
-import { blockedReport, comparePages, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
+import { blockedReport, comparePages, showsPlanned, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
 import { controlStates, dump, goto, inFront, inTurn, install, loadSession, mutateSession, pageFor, settle, shownValues, trace, type Point } from "./session.js";
 
 /** The text of a button that leads from a posting to its form. */
@@ -62,8 +61,9 @@ async function openForm(page: Page, job: Job): Promise<FieldsDump> {
  * Opens a job's form in a tab of its own and fills its first page. A sign-in page, a page with no
  * form, or a posting that has closed comes back as blocked with the reason.
  */
-export async function fillJob(jev: JevClient, profile: Profile, job: Job): Promise<FillReport> {
+export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: { signal?: AbortSignal } = {}): Promise<FillReport> {
   const started = Date.now();
+  const signal = opts.signal;
   await ensureBrowser();
   const old = loadSession()[job.id];
   // Opening a tab puts it in front, so it waits its turn behind any typing in another tab.
@@ -76,6 +76,7 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job): Promi
   try {
     let d = await openForm(page, job);
     trace(`${job.company}: form open ${Date.now() - started}ms, ${d.fields.length} fields`);
+    signal?.throwIfAborted();
     // Read and written in one synchronous step, so jobs filled side by side do not overwrite each other.
     mutateSession((s) => {
       s[job.id] = { targetId: target.id, url: d.url, state: "filling", since: new Date().toISOString() };
@@ -95,14 +96,14 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job): Promi
       const state = await decidePageState(jev, await page.evaluate<string>("window.__awj.pageText()"), d.url, job.id);
       return saveReport(blockedReport(job, `no form found, page looks like: ${state.state}`, d.url, seconds()));
     }
-    return await fillPage(page, jev, profile, job, d, { page: 1, earlier: [], started });
+    return await fillPage(page, jev, profile, job, d, { page: 1, earlier: [], started, ...(signal ? { signal } : {}) });
   } finally {
     page.close();
   }
 }
 
 /** Fills the page the tab shows, from its dump, and reports what the page holds afterwards. */
-async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, d: FieldsDump, at: { page: number; earlier: FieldReport[]; started: number; jevCostUsd?: number }): Promise<FillReport> {
+async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, d: FieldsDump, at: { page: number; earlier: FieldReport[]; started: number; jevCostUsd?: number; signal?: AbortSignal }): Promise<FillReport> {
   await readDropdownOptions(page, d.fields);
   trace(`${job.company}: options read ${Date.now() - at.started}ms`);
   const plan = await mapForm(jev, profile, job, d);
@@ -135,6 +136,8 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
   }
   failedRaw = [...(await secondLook(page, jev, profile, job, d, plan, failedRaw)), ...uploadFailures];
   failedRaw = await followUp(page, jev, profile, job, d, plan, failedRaw);
+  // An attempt that ran out of time was replaced by another: it must not write over that one's plan or report.
+  at.signal?.throwIfAborted();
   savePlan(job.id, d, plan);
   const read = await readBack(page, d, plan, failedRaw, uploaded);
   guide.learn([...read.failed, ...read.leftBlank]);
@@ -329,8 +332,8 @@ async function readBack(page: Page, d: FieldsDump, plan: FillPlan, failedRaw: Fa
     const shownNow = fields[i]?.shown ?? "";
     if ((f.action === "fill" || f.action === "upload") && !shownNow) {
       failed.push({ selector: f.selector, why: states[i] === "missing" ? "the control is no longer on the page" : "the value is not confirmed on the page" });
-    } else if (f.action === "fill" && f.value && (TYPED_KINDS.has(f.kind) || f.kind === "combobox") && !showsValue(f.value, shownNow)) {
-      failed.push({ selector: f.selector, why: `the box shows "${shownNow.slice(0, 40)}" instead of "${f.value.slice(0, 40)}"` });
+    } else if (f.action === "fill" && f.value && !showsPlanned(f, shownNow)) {
+      failed.push({ selector: f.selector, why: `the page shows "${shownNow.slice(0, 40)}" instead of "${(f.optionLabel ?? f.value).slice(0, 40)}"` });
     }
   });
   const { holds, leftBlank } = splitFailures(plan, failed, fields.map((f) => f.shown));
@@ -413,6 +416,18 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
       // The sheet note written for this posting last time is kept when Claude is not asked again.
       const prior = mem?.forms[memoryKey];
       if (!resolution.note && prior?.fingerprint === fingerprint && prior.resolution.note) resolution.note = prior.resolution.note;
+    }
+    // An answer about the right to work is held to the profile whoever gave it: the writer, or the memory.
+    if (entry) {
+      const refused = resolution.answers.flatMap((a) => {
+        const field = dumped(a.selector);
+        const why = field ? gateAnswer(field, a.value, profile, entry.job as unknown as Job) : null;
+        return why ? [{ selector: a.selector, why: `${field?.label.slice(0, 60) ?? a.selector}: ${why}` }] : [];
+      });
+      if (refused.length) {
+        const dropped = new Set(refused.map((x) => x.selector));
+        resolution = { ...resolution, verdict: "needs_review", reason: [resolution.reason, ...refused.map((x) => x.why)].filter(Boolean).join(" "), answers: resolution.answers.filter((a) => !dropped.has(a.selector)) };
+      }
     }
     const fills = resolution.answers
       .map((a) => ({ selector: a.selector, kind: open.get(a.selector)?.kind ?? "text", value: a.value }))

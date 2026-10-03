@@ -100,6 +100,7 @@ A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like
 - **`/expand`** reads the public places your profile already links to (your GitHub repositories, your portfolio site) and proposes projects, skills and facts that are missing from the profile, each with its source. Nothing is added without your yes.
 - **`/add-source`** adds a job board or a public list as a source: it inspects the site, writes the source in the shape of the shipped ones, tests it on a captured sample and runs one live query before registering it.
 - **`/profile`** changes your profile, your standing answers (how recurring questions are answered), your drafts and your voice guide with you. When a form answer looked wrong, this is where you fix it, once.
+- **`resume`** watches the forms left open for you (an emailed code, a robot check) while you finish them, and records each application when its confirmation shows. **`reconcile`** settles a form whose Submit was clicked with no confirmation seen: it reads the tab again and records it as applied or as not sent. Such a form is never sent twice.
 - **`log`**, **`status`** and **`cost`** show your applications (`log --manual` lists what the tool left for you), the totals and skip reasons, and what you have spent. `npx jev log --open` opens your applications in your spreadsheet program.
 - **`doctor`** checks everything a run needs and names the next step. `/setup` runs it for you.
 - **`knowledge --share`** copies what your runs learned about job sites into the repo, so a pull request can hand it to everyone. It holds site names and kinds of controls, nothing about you.
@@ -392,7 +393,7 @@ Every recurring question you answer by hand once (pay, relocation, start date, a
 
 ### Stay near your computer the first few runs
 
-Boards sometimes email a code or show a "not a robot" check after Submit. The tool never types a code or passes a check for you: it closes that form, lists the job in `applications/manual.csv` with the reason, and moves on to the next one, so a run never waits on you. Apply to those few by hand, or try them again later; boards stop asking after a while.
+Boards sometimes email a code or show a "not a robot" check after Submit. The tool never types such a code or passes a check for you. It leaves that form open and filled, sends you a notification, opens your mail at a search for the code, and moves on to the next job, so a run never waits on you. Type the code or pass the check in the tool's Chrome window, then run `npx jev resume` and it records the application.
 
 ## Contributing
 

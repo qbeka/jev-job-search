@@ -7,7 +7,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { BROWSER, DOCTOR, PATHS, ROOT, WRITER, writerBackend } from "./config.js";
+import { BROWSER, childEnv, DOCTOR, PATHS, ROOT, WRITER, writerBackend } from "./config.js";
 import { askWriter } from "./answers/resolve.js";
 import { JevClient } from "./jev/client.js";
 import { noul } from "./jev/questions.js";
@@ -41,7 +41,7 @@ export function checkClaude(): Check {
   if (writerBackend() === "api") {
     return { name: "Claude", ok: true, detail: `the Claude API, billed to ANTHROPIC_API_KEY in .env (${WRITER.model})`, fix: "" };
   }
-  const r = spawnSync(WRITER.command, ["--version"], { encoding: "utf8" });
+  const r = spawnSync(WRITER.command, ["--version"], { encoding: "utf8", env: childEnv() });
   const ok = r.status === 0;
   return { name: "Claude", ok, detail: ok ? `Claude Code ${r.stdout.trim()} on your subscription` : "the claude command was not found", fix: "Install Claude Code from https://code.claude.com and run `claude` once to sign in, or put ANTHROPIC_API_KEY in .env to use the Claude API instead" };
 }
@@ -118,7 +118,7 @@ export async function checkClaudeOnline(): Promise<Check> {
     }
   }
   const fix = "Run `claude` once in a terminal and sign in";
-  const r = spawnSync(WRITER.command, ["-p", "--model", WRITER.model, "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", "Reply with the single word ok."], { input: "ok?", encoding: "utf8", timeout: DOCTOR.claudeTimeoutMs, env: { ...process.env, ...WRITER.env } });
+  const r = spawnSync(WRITER.command, ["-p", "--model", WRITER.model, "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", "Reply with the single word ok."], { input: "ok?", encoding: "utf8", timeout: DOCTOR.claudeTimeoutMs, env: childEnv(WRITER.env) });
   try {
     const envelope = JSON.parse(r.stdout) as { is_error?: boolean; result?: string };
     const ok = r.status === 0 && !envelope.is_error;

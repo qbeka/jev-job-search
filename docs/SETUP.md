@@ -149,10 +149,11 @@ again. Changing your profile, drafts or voice guide makes it start over.
   sent. They are listed in `applications/manual.csv`,
   each with the reason and the link. `npx jev log --manual`
   prints the list.
-- When a board emails you a code after you send, the filled form stays
-  closed and listed in `applications/manual.csv` for you to do by hand.
-  Type the code from your email, click Submit, and the tool records the
-  application. The tool does not read or type the code.
+- When a board emails you a code after you send, or shows a robot check,
+  the filled form stays open in the tool's window and you get a
+  notification. Type the code or pass the check, click Submit, and run
+  `npx jev resume`: the tool records the application. It does not read or
+  type the code.
 
 ## 10. What the tool learns
 

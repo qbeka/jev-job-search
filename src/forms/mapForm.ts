@@ -84,6 +84,69 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
   };
 }
 
+/** Raised whenever the gates below change, so a plan cached under the old rules is not reused. */
+const PLAN_VERSION = 2;
+
+/** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
+const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
+const AUTH_Q = /authori[sz]ed to work|legally (?:authori[sz]ed|eligible|entitled|permitted|able) to work|eligible to work|right to work|work authori[sz]ation|legally work/i;
+const SPONSOR_Q = /sponsor/i;
+/** A tick that accepts something: terms, an agreement, a notice. */
+const AGREEMENT_Q = /\b(agree|agreement|acknowledg|consent|terms|privacy|arbitration|attest|certify|accept)/i;
+/** Ticks that say the application is true or that a privacy notice was read: every application needs them. */
+const ROUTINE_AGREEMENT = /\b(privacy|true|accurate|correct|complete|information (?:i|provided|above)|data (?:protection|processing))/i;
+
+export type Category = "contact_other" | "authorization" | "sponsorship" | "agreement" | "general";
+
+/** What kind of answer a field asks for, from its question. The kinds that must be true get stricter rules. */
+export function categoryOf(f: Pick<DumpedField, "label" | "section" | "hint" | "kind">): Category {
+  const words = `${f.label} ${f.section ?? ""}`;
+  if ((f.kind === "email" || f.kind === "tel") && OTHER_PERSON.test(`${words} ${f.hint ?? ""}`)) return "contact_other";
+  if (f.kind === "checkbox") return AGREEMENT_Q.test(words) ? "agreement" : "general";
+  const sponsor = SPONSOR_Q.test(words);
+  const auth = AUTH_Q.test(words);
+  // "Authorized to work without sponsorship" is a question about authorization; "will you require sponsorship" is about sponsorship.
+  if (auth && (!sponsor || /without (?:the need for |requiring |needing )?(?:visa )?sponsor/i.test(words))) return "authorization";
+  if (sponsor && !auth) return "sponsorship";
+  return "general";
+}
+
+/** The country a question about the right to work means: the one it names, else the posting's. Null when neither says. */
+export function countryOf(label: string, job: Job): string | null {
+  if (/\bcanad/i.test(label)) return "Canada";
+  if (/united states|\bu\.?s\.?a?\.?\b|\bamerica\b/i.test(label)) return "United States";
+  const tier = locationTier(job.locations);
+  return tier === "vancouver" || tier === "canada" ? "Canada" : tier === "us" ? "United States" : null;
+}
+
+/** Yes or No, when an option plainly says one of them. */
+export const polarity = (label: string): "Yes" | "No" | null => (/^\s*yes\b/i.test(label) ? "Yes" : /^\s*no\b/i.test(label) ? "No" : null);
+
+/** The true answer to a question about the right to work, from the profile. Null when the country cannot be told. */
+export function truthFor(category: Category, label: string, profile: Profile, job: Job): "Yes" | "No" | null {
+  const country = countryOf(label, job);
+  if (!country) return null;
+  const auth = authForCountry(profile, country);
+  return category === "authorization" ? auth.authorized : category === "sponsorship" ? auth.requires_sponsorship : null;
+}
+
+/** True when the person's standing answers say the tool may accept agreements for them. */
+export const approvesAgreements = (profile: Profile): boolean => profile.answers.some((a) => /agreement|acknowledg|terms|attestation/i.test(a.question) && /\b(i agree|tick)\b/i.test(a.answer));
+
+/**
+ * Why an answer about the right to work may not go in, or null when it may: the option must say
+ * what the profile says for the country the question means. Used for JEV's picks and the writer's.
+ */
+export function gateAnswer(f: Pick<DumpedField, "label" | "section" | "hint" | "kind">, value: string, profile: Profile, job: Job): string | null {
+  const category = categoryOf(f);
+  if (category !== "authorization" && category !== "sponsorship") return null;
+  const truth = truthFor(category, f.label, profile, job);
+  if (truth === null) return "the question does not name a country and the posting's is not clear, so the answer is yours";
+  const said = polarity(value);
+  if (said !== null && said !== truth) return `the answer "${value.slice(0, 30)}" does not match the profile, which says ${truth} for ${countryOf(f.label, job)}`;
+  return null;
+}
+
 export function authForCountry(profile: Profile, country: string): { authorized: "Yes" | "No"; requires_sponsorship: "Yes" | "No" } {
   const ok = profile.workAuthorization.authorizedCountries.some((c) => country.toLowerCase().includes(c.toLowerCase()));
   return { authorized: ok ? "Yes" : "No", requires_sponsorship: ok ? "No" : "Yes" };
@@ -248,7 +311,7 @@ export async function mapForm(jev: JevClient, profile: Profile, job: Job, dump: 
   // The values a form happens to hold (an earlier fill, an autofill) do not change what belongs in it.
   const fields = dump.fields.map(({ value: _value, checked: _checked, ...rest }) => rest);
   // A plan made with the profile's resume is not the plan for a run that wants a tailored one, and the other way round.
-  const key = hashOf({ fields, submit: dump.submitSelectors, state: buildFormState(profile, job, { ...dump, url: "" }, []), form: FORM, documents: documentPolicy() });
+  const key = hashOf({ fields, submit: dump.submitSelectors, state: buildFormState(profile, job, { ...dump, url: "" }, []), form: FORM, documents: documentPolicy(), version: PLAN_VERSION });
   const hit = plans.get(key);
   if (hit) return { ...hit, jobId: job.id, url: dump.url, jevCostUsd: 0 };
   const plan = await mapFormFresh(jev, profile, job, dump);
@@ -352,6 +415,10 @@ async function mapFormFresh(jev: JevClient, profile: Profile, job: Job, dump: Fi
 
 export function planField(f: DumpedField, answer: Answer | undefined, profile: Profile, job: Job): PlannedField {
   const base = { id: f.id, selector: f.selector, kind: f.kind, label: f.label, required: f.required, optionLabel: null as string | null };
+  // A reference's email or a supervisor's phone is not the applicant's: such a box is never filled from the profile.
+  if (categoryOf(f) === "contact_other") {
+    return { ...base, action: f.required ? "review" : "skip", key: f.required ? "unknown" : "leave_blank", value: null, confidence: 1, note: "asks for another person's contact details" };
+  }
   if (f.kind === "email") return { ...base, action: "fill", key: "email", value: profile.email, confidence: 1, note: null };
   if (f.kind === "tel") {
     // National digits unless the placeholder or hint shows an international format.
@@ -364,8 +431,14 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
 
   if (f.kind === "checkbox") {
     const p = (answer as NoulAnswer).noul;
-    if (p >= 0.7) return { ...base, action: "fill", key: "checked", value: "true", confidence: p, note: null };
-    if (p <= 0.3) return { ...base, action: "skip", key: "unchecked", value: null, confidence: 1 - p, note: "left unchecked" };
+    if (p >= FORM.gates.tick) {
+      // Accepting an agreement is the person's: the tool ticks it when their standing answers say so, or when it only says the application is true.
+      if (categoryOf(f) === "agreement" && !ROUTINE_AGREEMENT.test(f.label) && !approvesAgreements(profile)) {
+        return { ...base, action: "review", key: "unknown", value: null, confidence: p, note: "accepting this is yours to decide; a standing answer about agreements lets the tool tick it" };
+      }
+      return { ...base, action: "fill", key: "checked", value: "true", confidence: p, note: null };
+    }
+    if (p <= FORM.gates.leave) return { ...base, action: "skip", key: "unchecked", value: null, confidence: 1 - p, note: "left unchecked" };
     return { ...base, action: "review", key: "unknown", value: null, confidence: Math.max(p, 1 - p), note: "unsure whether to check" };
   }
 
@@ -378,6 +451,13 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
     const idx = parseInt(a.choice.replace(/^o/, ""), 10);
     const opt = f.options[idx];
     if (!opt) return { ...base, action: "review", key: "unknown", value: null, confidence: 0, note: "option index out of range" };
+    // An answer about the right to work must say what the profile says. JEV picked the option; code checks it.
+    const refused = gateAnswer(f, opt.label, profile, job);
+    if (refused) return { ...base, action: "review", key: "unknown", value: null, confidence: a.confidence, note: refused };
+    const category = categoryOf(f);
+    if ((category === "authorization" || category === "sponsorship") && polarity(opt.label) === null && a.confidence < FORM.gates.authority) {
+      return { ...base, action: "review", key: "unknown", value: null, confidence: a.confidence, note: "an answer about the right to work that is not a plain yes or no" };
+    }
     const action = a.confidence >= FORM.reviewConfidence ? "fill" : "review";
     // Radios and comboboxes are matched by label in fillFields.js: radio value attributes are often missing or all "on".
     const value = f.kind === "select" ? opt.value : opt.label;
@@ -408,7 +488,7 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
     return { ...base, action: "review", key, value: null, confidence: a.confidence, note: "unknown field" };
   }
   if (isProfileKey(key)) {
-    const value = valueForJob(profile, job, key as FieldKey);
+    const value = valueForJob(profile, job, key as FieldKey, f.label);
     if (value === null) {
       if (key === "gpa") return { ...base, action: f.required ? "fill" : "skip", key, value: f.required ? gpaValue(profile) : null, confidence: a.confidence, note: f.required ? "GPA given only because the field is required" : "GPA not volunteered" };
       return { ...base, action: f.required ? "review" : "skip", key, value: null, confidence: a.confidence, note: f.required ? "required but the profile has no value" : null };
@@ -453,11 +533,12 @@ function gpaValue(profile: Profile): string | null {
 }
 
 /** Profile value for a key, with the two job-dependent keys resolved against the posting's country. */
-export function valueForJob(profile: Profile, job: Job, key: FieldKey): string | null {
+export function valueForJob(profile: Profile, job: Job, key: FieldKey, label = ""): string | null {
   if (isSpecialKey(key)) return null;
   if (key === "authorized_to_work" || key === "requires_sponsorship") {
-    const tier = locationTier(job.locations);
-    const country = tier === "vancouver" || tier === "canada" ? "Canada" : tier === "us" ? "United States" : "unknown";
+    // The country is the one the question names, else the posting's. When neither says, the answer is the person's.
+    const country = countryOf(label, job);
+    if (!country) return null;
     const auth = authForCountry(profile, country);
     return key === "authorized_to_work" ? auth.authorized : auth.requires_sponsorship;
   }
