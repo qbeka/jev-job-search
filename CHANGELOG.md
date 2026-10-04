@@ -49,6 +49,14 @@ changed for a person using the tool and what changed for a contributor.
   address and phone sections and emptied them.
 
 ### Fixed
+- A search that ends while something else is working on the queue drops
+  none of that work. `discover` holds no run lock, since it never
+  touches the browser, and it never wrote back what it read at its
+  start: it merges into the queue as it is at the end, under the store
+  lock. One case slipped through: a job added or changed by another
+  process during the search (a pasted link, an answer saved in the
+  dashboard), which the search itself did not see, was dropped. It is
+  kept now, and a regression test plays the whole sequence.
 - A dropdown that picked the right option for a short value is taken as
   landed. The phone's country on Greenhouse was given "+1", picked
   "Canada +1", and was then judged not to show "+1", so every such form

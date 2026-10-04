@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { acquireRun, currentRun, withLock, writeAtomic } from "../src/util/store.js";
-import { entryFor, KEPT_ON_REDISCOVERY, loadQueue, mutateQueue, QueueStatus, saveQueue, type QueueEntry } from "../src/jobs/queue.js";
+import { entryFor, KEPT_ON_REDISCOVERY, loadQueue, mutateQueue, QueueStatus, saveQueue, updateEntry, type QueueEntry } from "../src/jobs/queue.js";
 import { statusKeyOf, statusLabel } from "../src/log/csv.js";
 import { pickJobs } from "../src/run/pipeline.js";
-import { mergeDecided } from "../src/discover.js";
+import { mergeDecided, writeDecided } from "../src/discover.js";
 import type { Job } from "../src/jobs/normalize.js";
 
 const dir = () => mkdtempSync(path.join(tmpdir(), "jev-store-"));
@@ -144,5 +144,52 @@ describe("a search merged into the queue", () => {
     // A skip a run or the person decided is theirs: the search leaves it and its reason alone.
     const refused = { ...walled, statusReason: "the board refused a second application: you recently applied to this company" };
     expect(entryFor(job(8), fit as never, null, refused)).toMatchObject({ status: "skipped", statusReason: refused.statusReason });
+  });
+});
+
+describe("a search that ends while another process is working on the queue", () => {
+  it("writes back nothing it read at its start: what the others changed meanwhile is all still there", () => {
+    const d = dir();
+    const files = { queue: path.join(d, "queue.json"), rows: path.join(d, "all.csv") };
+    const stale = entry(8, { updatedAt: "2026-09-01T00:00:00.000Z" });
+    saveQueue({ version: 1, generatedAt: "2026-10-01T00:00:00.000Z", entries: [entry(1), entry(2), entry(3), entry(4), stale] }, files.queue);
+
+    // The search reads the queue, then goes off to read boards and rate for minutes. It holds no lock while it does.
+    const atStart = loadQueue(files.queue);
+    const since = new Date(Date.now() - 1000).toISOString();
+    const idOf = (n: number) => atStart.entries.find((e) => e.job.company === `Co${n}`)?.job.id as string;
+
+    // Meanwhile an apply run sends one job and is in the middle of a second, the dashboard saves an answer on a third,
+    // and a link the person pasted adds a job the search never sees.
+    mutateQueue((q) => {
+      updateEntry(q, idOf(1), { status: "applied", appliedAt: "2026-10-04T12:00:00.000Z" });
+      updateEntry(q, idOf(2), { status: "in_progress" });
+      updateEntry(q, idOf(3), { answers: [{ question: "Why us?", answer: "Because." }] });
+      q.entries.push(entry(9));
+    }, files.queue);
+
+    // The search ends. It found the four jobs it knew, all still wanted, and neither the pasted one nor the stale one.
+    const decided = [1, 2, 3, 4].map((n) => ({ job: { ...job(n), id: idOf(n) }, fit: fit as never, reason: null }));
+    const merged = writeDecided(decided, new Date(), since, files);
+
+    for (const entries of [merged.entries, loadQueue(files.queue).entries]) {
+      const by = new Map(entries.map((e) => [e.job.company, e]));
+      expect(by.get("Co1")).toMatchObject({ status: "applied", appliedAt: "2026-10-04T12:00:00.000Z" });
+      expect(by.get("Co2")?.status).toBe("in_progress");
+      expect(by.get("Co3")).toMatchObject({ status: "queued", answers: [{ question: "Why us?", answer: "Because." }] });
+      expect(by.get("Co4")?.status).toBe("queued");
+      // Added while the search ran: kept, though the search did not see it.
+      expect(by.get("Co9")?.status).toBe("queued");
+      // Untouched since long before the search, and no longer posted: dropped, as before.
+      expect(by.has("Co8")).toBe(false);
+    }
+    // The record on disk was written from the merged queue, not from what the search read at its start.
+    expect(readFileSync(files.rows, "utf8")).toMatch(/Co1[^\n]*Applied/);
+  });
+
+  it("drops a job nobody touched during the search when the search no longer finds it", () => {
+    const old = entry(8, { updatedAt: "2026-09-01T00:00:00.000Z" });
+    expect(mergeDecided([old], [], "2026-10-04T00:00:00.000Z")).toEqual([]);
+    expect(mergeDecided([{ ...old, updatedAt: "2026-10-04T00:05:00.000Z" }], [], "2026-10-04T00:00:00.000Z")).toHaveLength(1);
   });
 });

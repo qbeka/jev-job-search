@@ -120,7 +120,12 @@ export type Decided = { job: Job; fit: FitResult | null; reason: string | null; 
  * someone. A posting that left the lists must stay: dropped, it could come back later as a new job
  * and be applied to twice.
  */
-export function mergeDecided(current: QueueEntry[], decided: Decided[]): QueueEntry[] {
+/**
+ * What a search found, laid over the queue as it is now. `since` is when the search began: a job
+ * the search did not see, which another process added or changed after that (a link applied to, an
+ * answer saved in the dashboard), is somebody's work in progress and is kept whatever its status.
+ */
+export function mergeDecided(current: QueueEntry[], decided: Decided[], since?: string): QueueEntry[] {
   const byId = new Map(current.map((e) => [e.job.id, e]));
   const entries = decided.map((d) => {
     const before = byId.get(d.job.id);
@@ -135,13 +140,35 @@ export function mergeDecided(current: QueueEntry[], decided: Decided[]): QueueEn
     return e;
   });
   const seen = new Set(entries.map((e) => e.job.id));
-  for (const e of current) if (!seen.has(e.job.id) && CARRIED_OVER.includes(e.status)) entries.push(e);
+  for (const e of current) if (!seen.has(e.job.id) && (CARRIED_OVER.includes(e.status) || (!!since && e.updatedAt > since))) entries.push(e);
   return sortEntries(entries);
+}
+
+/**
+ * Writes a search's findings. A search runs for minutes and holds no run lock, since it never
+ * touches the browser, so an apply run, the dashboard or a second search may change the queue
+ * meanwhile. Nothing the search read at its start is written back: the queue is read again here,
+ * under the store lock, the findings are laid over what it holds now, and it is saved whole.
+ */
+export function writeDecided(decided: Decided[], now: Date, since: string, files: { queue?: string; rows?: string } = {}): QueueFile {
+  return withStore(() => {
+    const merged = mutateQueue((q) => {
+      q.generatedAt = now.toISOString();
+      q.entries = mergeDecided(q.entries, decided, since);
+      return q;
+    }, files.queue);
+    let rows = loadRows(files.rows);
+    for (const e of merged.entries) rows = upsertEntry(rows, e);
+    saveRows(rows, files.rows);
+    return merged;
+  });
 }
 
 export async function discover(profile: Profile, jev: JevClient, opts: DiscoverOptions = {}): Promise<{ queue: QueueFile; summary: DiscoverSummary }> {
   const log = opts.log ?? (() => {});
   const now = opts.now ?? new Date();
+  // The clock's own time, not the one a test may set: it is compared with the times other processes stamp on what they change.
+  const began = new Date().toISOString();
   const previous = loadQueue();
   const prevById = new Map(previous.entries.map((e) => [e.job.id, e]));
 
@@ -200,17 +227,7 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
     }
   });
 
-  const queue = withStore(() => {
-    const merged = mutateQueue((q) => {
-      q.generatedAt = now.toISOString();
-      q.entries = mergeDecided(q.entries, decided);
-      return q;
-    });
-    let rows = loadRows();
-    for (const e of merged.entries) rows = upsertEntry(rows, e);
-    saveRows(rows);
-    return merged;
-  });
+  const queue = writeDecided(decided, now, began);
 
   const summary: DiscoverSummary = {
     collected,
