@@ -18,7 +18,7 @@ import type { Adapter, AuthPage, Verifier } from "../src/accounts/provider.js";
 import { itemFor, MemoryStore } from "../src/accounts/secrets.js";
 import { workday } from "../src/accounts/workday.js";
 import { Page, sleep, type Target } from "../src/browser/cdp.js";
-import { dump, goto } from "../src/browser/session.js";
+import { dump, goto, install } from "../src/browser/session.js";
 import { ACCOUNTS, BROWSER, childEnv } from "../src/config.js";
 import { startMockBoard, type MockBoard } from "./helpers/workdayMock.js";
 
@@ -94,6 +94,18 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the sign-in in a real browser"
     expect(d.fields.map((f) => f.label)).toEqual(["First Name", "Last Name"]);
     expect(d.fields.map((f) => f.selector).join(" ")).not.toMatch(/otp/);
     expect(d.hasPassword).toBe(false);
+    page.close();
+  }, 60_000);
+
+  it("puts its helpers back when the page loads again under it", async () => {
+    const { page } = await open();
+    await install(page);
+    expect(await page.awj<string>("pageText")).toMatch(/Create Account/);
+    // The site loads its page a second time, as Workday does once it knows who is signed in.
+    await page.evaluate("location.reload()");
+    for (let i = 0; i < 40 && (await page.evaluate<string>("document.readyState").catch(() => "")) !== "complete"; i++) await sleep(100);
+    expect(await page.awj<string>("pageText")).toMatch(/Create Account/);
+    expect((await dump(page)).hasPassword).toBe(true);
     page.close();
   }, 60_000);
 

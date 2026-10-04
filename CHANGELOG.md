@@ -12,6 +12,11 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Fixed
+- A page that loads a second time while its form is being filled no
+  longer stops the fill with "Cannot read properties of undefined". The
+  runner puts its in-page helpers back and carries on; every value is
+  still read back from the page afterwards. Met on the first real Workday
+  form.
 - A job a search skipped for one reason and now skips for another shows
   the reason that holds today. Before, a Workday job that was rated after
   you set its employer up, and skipped by the rating, still said it needed

@@ -47,7 +47,7 @@ export const trace = (line: string) => {
 export const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
 export async function install(page: Page): Promise<void> {
-  await page.evaluate(script("pageHelpers.js"));
+  await page.useHelpers(script("pageHelpers.js"));
 }
 
 /**

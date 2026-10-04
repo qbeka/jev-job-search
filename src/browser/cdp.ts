@@ -122,6 +122,10 @@ export class Page {
   private mainUrl = "";
   private closed = false;
   private listeners = new Map<string, Set<(params: Record<string, unknown>) => void>>();
+  /** The source of the in-page helpers, kept so they can be put back when the page loads again under a fill. */
+  private helpers = "";
+  /** Set when the tab's own page has loaded again since the helpers were put in. */
+  private stale = false;
   private constructor(private ws: WebSocket, readonly targetId: string) {}
 
   static async attach(target: Target): Promise<Page> {
@@ -166,6 +170,8 @@ export class Page {
       const frame = params.frame as { parentId?: string; url: string };
       if (!frame.parentId) {
         this.mainUrl = frame.url;
+        // A page that loads again starts with nothing of ours in it.
+        this.stale = true;
         // A new page: what the last one was still sending will never be answered, and is not this form's business.
         this.inflight.clear();
         this.writes.clear();
@@ -235,8 +241,50 @@ export class Page {
     });
   }
 
+  /** Puts the in-page helpers on the page, and remembers them for the next time the page loads again. */
+  async useHelpers(source: string): Promise<void> {
+    this.helpers = source;
+    this.stale = false;
+    await this.rawEvaluate(source);
+  }
+
+  /**
+   * Puts the helpers back when they are gone. Some sites load their page a second time after it
+   * looked ready (Workday does, once it knows who is signed in). Without this, the next read of
+   * the page would fail on a helper that is no longer there, in the middle of a fill.
+   */
+  private async restore(): Promise<void> {
+    if (!this.helpers) return;
+    this.stale = false;
+    try {
+      if (await this.rawEvaluate<boolean>("typeof window.__awj === 'object' && window.__awj !== null")) return;
+      await this.rawEvaluate(this.helpers);
+      if (process.env.AWJ_TRACE) console.error(`[page] loaded again, helpers put back: ${safeUrl(this.mainUrl)}`);
+    } catch {
+      // Still loading: the next call tries again.
+      this.stale = true;
+    }
+  }
+
+  /** Runs a read of the page, putting the helpers back first when the page has loaded again, or once more when it fails for want of them. */
+  private async withHelpers<T>(run: () => Promise<T>): Promise<T> {
+    if (this.stale) await this.restore();
+    try {
+      return await run();
+    } catch (err) {
+      const said = err instanceof Error ? err.message : String(err);
+      if (!this.helpers || !/__awj|Cannot read properties of undefined/.test(said)) throw err;
+      await this.restore();
+      return run();
+    }
+  }
+
   /** Evaluates a fixed expression in the page and returns its JSON value. For anything with a value in it, use call. */
-  async evaluate<T>(expression: string): Promise<T> {
+  evaluate<T>(expression: string): Promise<T> {
+    return this.withHelpers(() => this.rawEvaluate<T>(expression));
+  }
+
+  private async rawEvaluate<T>(expression: string): Promise<T> {
     const r = await this.send<{ result: { value: T }; exceptionDetails?: { text: string; exception?: { description?: string } } }>("Runtime.evaluate", {
       expression,
       returnByValue: true,
@@ -250,7 +298,11 @@ export class Page {
    * Calls a function in the page with JSON arguments. Values travel as arguments, never spliced
    * into source text, so nothing read from a page or a file can become code.
    */
-  async call<T>(fn: string, ...args: unknown[]): Promise<T> {
+  call<T>(fn: string, ...args: unknown[]): Promise<T> {
+    return this.withHelpers(() => this.rawCall<T>(fn, ...args));
+  }
+
+  private async rawCall<T>(fn: string, ...args: unknown[]): Promise<T> {
     const root = await this.send<{ result: { objectId: string } }>("Runtime.evaluate", { expression: "globalThis" });
     const r = await this.send<{ result: { value: T }; exceptionDetails?: { text: string; exception?: { description?: string } } }>("Runtime.callFunctionOn", {
       functionDeclaration: fn,
