@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "target": 15,
+  "where": ["vancouver", "canada", "remote"],
+  "levels": ["internship"],
+  "minScore": 0.5,
+  "boards": [],
+  "excludeEmployers": ["Example Corp"],
+  "documents": { "tailor": false, "cover": false },
+  "jevBudgetUsd": 0.5
+}

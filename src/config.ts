@@ -42,6 +42,13 @@ export const PATHS = {
   /** Applications sent to a company that also wants a take-home assignment: the link and the instructions, for the person to do. */
   takehome: path.join(ROOT, "applications", "takehome.csv"),
   runs: path.join(ROOT, "data", "runs"),
+  /** The person's standing instructions for the daily run. Without this file `daily` does nothing. */
+  policy: path.join(ROOT, "data", "policy.json"),
+  policyExample: path.join(ROOT, "data", "policy.example.json"),
+  /** Boards the daily run leaves alone until a date, because they asked for a human check or refused a burst. */
+  boardPauses: path.join(ROOT, "data", "runs", "board-pauses.json"),
+  /** What the scheduled run prints. */
+  dailyLog: path.join(ROOT, "data", "runs", "daily.log"),
   /** The job-board accounts the person allowed, and the rule for making new ones. No secret is in it. */
   accounts: path.join(ROOT, "data", "accounts.json"),
   accountsExample: path.join(ROOT, "data", "accounts.example.json"),
@@ -303,6 +310,35 @@ export const DOCUMENTS = {
   maxLetterWords: 260,
   /** Words that may be capitalized in a sentence without being a claim about the candidate. */
   plainWords: ["I", "A", "An", "The", "My", "In", "At", "On", "For", "With", "And", "As", "To", "Of", "This", "That", "It", "We", "You", "Your", "Our", "If", "When", "While", "After", "Before", "Over", "Since", "Through", "Then", "There", "Here", "What", "Which", "Who", "How", "Why", "Yes", "No", "Dear", "Hi", "Hello", "Sincerely", "Best", "Regards", "Thank", "Thanks", "Team", "Hiring", "Manager", "Regarding", "Re"],
+} as const;
+
+/**
+ * The daily run (`src/run/daily.ts`). No rate is known to be safe, so these are set to look like
+ * one careful person: few applications, spread over boards and employers, minutes apart, and a
+ * full stop at the first signs that a board is asking whether a person is there.
+ */
+export const DAILY = {
+  /** Applications a day when the policy names no number, and the most a policy or a flag may ask for. */
+  target: 15,
+  maxTarget: 25,
+  /** Applications to one job board in a day. */
+  perBoard: 8,
+  /** Applications to one employer in a day, and forms open or unconfirmed with one employer at once. */
+  perEmployerPerDay: 1,
+  openPerEmployer: 2,
+  /** The pause between two submissions to one board: a random time between these two. */
+  gapMs: [3 * 60_000, 6 * 60_000],
+  /** Boards that asked for a human check in one run before the whole run stops. */
+  challengesStopRun: 2,
+  /** Jobs one run opens at most, whatever became of them. */
+  maxAttempts: 30,
+  /** Longest one run lasts. */
+  maxMinutes: 90,
+  /** The most JEV may cost in a day before the run stops, when the policy names no number. */
+  jevBudgetUsd: 0.5,
+  /** The name the scheduled run is registered under with macOS, and the time it runs when none is given. */
+  label: "com.jev-job-search.daily",
+  at: "09:00",
 } as const;
 
 /** Signing in to job boards the person has an account on, and making an account where they allowed it (`src/accounts/`). */

@@ -18,7 +18,11 @@ import { acquireRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob } from "./browser/submit.js";
-import { ACCOUNTS, childEnv, GMAIL, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { ACCOUNTS, childEnv, DAILY, GMAIL, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { accountGate } from "./accounts/capability.js";
+import { dailyRun, formatDaily, localDay, saveDaily, type Outcome } from "./run/daily.js";
+import { loadPolicy } from "./run/policy.js";
+import { installSchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
 import { addEmployer, clearPauses, describeAccounts, removeAccounts, setRule } from "./accounts/commands.js";
 import { defaultStore, passwordProblems } from "./accounts/secrets.js";
 import { connect as connectGmail, disconnect as disconnectGmail, loadGmail } from "./mail/gmail.js";
@@ -161,6 +165,71 @@ program
     });
     if (!o.json) console.log(`\nCost of this run\n${formatCost(loadCost(began))}`);
     endIfAbandoned();
+  });
+
+program
+  .command("daily")
+  .description(`The day's applications with nobody watching: find jobs, then fill and send one at a time, inside your standing policy (data/policy.json) and conservative limits (at most ${DAILY.target} a day unless your policy says otherwise). It does nothing until that file exists`)
+  .option("--target <n>", `applications for the day, at most ${DAILY.maxTarget}`, int)
+  .option("--max-attempts <n>", "jobs this run may open, whatever becomes of them", int)
+  .option("--max-minutes <n>", "how long this run may last", int)
+  .option("--dry", "a rehearsal: fill and check, send nothing, record nothing")
+  .option("--no-discover", "use the queue as it is, without searching for new jobs first")
+  .option("--json", "print the summary as JSON")
+  .action(async (o: { target?: number; maxAttempts?: number; maxMinutes?: number; dry?: boolean; discover: boolean; json?: boolean }) => {
+    const policy = loadPolicy();
+    if (!policy) {
+      console.log(`The daily run sends applications with nobody watching, so it needs your standing policy first: ${PATHS.policy} does not exist.\nRun /daily in Claude Code, or copy data/policy.example.json to data/policy.json and make it yours.`);
+      process.exitCode = 1;
+      return;
+    }
+    const say = (l: string) => console.error(l);
+    const jev = new JevClient();
+    const dry = !!o.dry;
+    documentsFromOptions({ tailor: policy.documents.tailor, cover: policy.documents.cover });
+    const midnight = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+    const jevSpentToday = () => Object.values(loadCost(midnight).jev).reduce((n, b) => n + b.costUsd, 0);
+    const sent: string[] = [];
+    const run = async (id: string): Promise<Outcome> => {
+      const entries = takeJobs([id], { count: 1, dry });
+      const { reports, sent: now } = entries.length ? await pipeline(entries, { submit: !dry, dry, fresh: false, quiet: true }) : { reports: [], sent: [] };
+      sent.push(...now);
+      const e = loadQueue().entries.find((x) => x.job.id === id);
+      return { status: e?.status ?? "failed", waitingFor: e?.waitingFor ?? null, reason: e?.statusReason ?? null, ready: !!reports[0]?.ready, report: reports[0] ?? null };
+    };
+    const summary = await inRun(`daily${dry ? " --dry" : ""}`, async () => {
+      if (o.discover) {
+        say(`[daily] ${localDay(new Date())}: looking for jobs`);
+        await discover(loadProfile(), jev, { boards: true, log: say }).catch((err: unknown) => say(`[daily] the search failed, so the queue is used as it is: ${err instanceof Error ? err.message : String(err)}`));
+      }
+      return dailyRun(policy, { ...(o.target !== undefined ? { target: o.target } : {}), ...(o.maxAttempts !== undefined ? { maxAttempts: o.maxAttempts } : {}), ...(o.maxMinutes !== undefined ? { maxMinutes: o.maxMinutes } : {}), dry }, { now: () => new Date(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)), random: Math.random, queue: () => loadQueue().entries, run, gate: () => accountGate(), jevSpentToday, log: say });
+    });
+    if (!dry) {
+      saveDaily(summary);
+      await noteApplied(sent);
+    }
+    console.log(o.json ? JSON.stringify(summary, null, 2) : `\n${formatDaily(summary)}`);
+    if (!dry && !o.json) console.log(whereTheRecordIs());
+    endIfAbandoned();
+  });
+
+program
+  .command("schedule <action>")
+  .description("Run `daily` by itself every day. install [--at HH:MM] | remove | status. Nothing is scheduled until you run install")
+  .option("--at <time>", "the time of day, 24-hour", DAILY.at)
+  .action((action: string, o: { at: string }) => {
+    if (action === "install") {
+      if (!loadPolicy()) return console.log(`Write your standing policy first: ${PATHS.policy} does not exist. Run /daily in Claude Code, or copy data/policy.example.json.`);
+      const s = installSchedule(o.at);
+      console.log(`Scheduled: \`jev daily\` runs every day at ${s.at} while this Mac is on and you are signed in.\nWhat it prints goes to ${PATHS.dailyLog}. To stop it: npx jev schedule remove`);
+    } else if (action === "remove") {
+      console.log(removeSchedule() ? "The schedule is removed. Nothing runs by itself now." : "No schedule was installed.");
+    } else if (action === "status") {
+      const s = scheduleStatus();
+      console.log(s.installed ? `A daily run is scheduled${s.loaded ? "" : ", but macOS has not loaded it. Install it again: npx jev schedule install"}. Its file: ${s.file}` : "Nothing is scheduled. The daily run only happens when you run it: npx jev daily");
+    } else {
+      console.log("The actions are: install, remove, status");
+    }
   });
 
 program

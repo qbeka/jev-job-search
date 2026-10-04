@@ -14,6 +14,7 @@ applications/*
 !applications/example.csv
 data/queue.json
 data/accounts.json
+data/policy.json
 data/gmail.json
 data/cache/
 data/runs/
