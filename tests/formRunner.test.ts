@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { isFormWrite } from "../src/browser/cdp.js";
 import { closestOptions, pickOption } from "../src/browser/dropdowns.js";
+import { rightAlready } from "../src/browser/fill.js";
+import { showsPicked } from "../src/util/dates.js";
 import { comparePages, isClean, isReady, pickNext, pickSubmit, notOnScreen, showsAnother, splitFailures } from "../src/browser/report.js";
 import type { FieldsDump } from "../src/forms/fields.js";
 
@@ -205,5 +207,46 @@ describe("a form that was not on screen when it was read back", () => {
     expect(notOnScreen(planned, states(0))).toEqual([]);
     expect(notOnScreen(planned, states(3))).toEqual([]);
     expect(notOnScreen(planned, states(4))).toHaveLength(1);
+  });
+});
+
+describe("a box that already shows its value", () => {
+  it("is left alone, whatever shape the site writes the value in", () => {
+    expect(rightAlready({ selector: "#c", kind: "combobox", value: "Canada" }, "Canada")).toBe(true);
+    expect(rightAlready({ selector: "#p", kind: "tel", value: "7805550100" }, "(780) 555-0100")).toBe(true);
+    expect(rightAlready({ selector: "#code", kind: "combobox", value: "Canada (+1)" }, "Canada (+1)")).toBe(true);
+    expect(rightAlready({ selector: "#r", kind: "radio", value: "No" }, "No")).toBe(true);
+  });
+
+  it("is written when it is empty or shows something else", () => {
+    expect(rightAlready({ selector: "#c", kind: "combobox", value: "Canada" }, "")).toBe(false);
+    expect(rightAlready({ selector: "#c", kind: "combobox", value: "Canada" }, "Cameroon")).toBe(false);
+    expect(rightAlready({ selector: "#code", kind: "combobox", value: "Canada (+1)" }, "Anguilla (+1)")).toBe(false);
+    expect(rightAlready({ selector: "#city", kind: "text", value: "Edmonton" }, "Calgary")).toBe(false);
+    expect(rightAlready({ selector: "#cv", kind: "file", value: "resume.pdf" }, "resume.pdf")).toBe(false);
+  });
+});
+
+describe("choices that sit close together", () => {
+  it("picks none when a short value is inside many options and nothing of the candidate's tells them apart", () => {
+    const codes = ["American Samoa (+1)", "Anguilla (+1)", "Bahamas (+1)"];
+    expect(pickOption(codes, "+1", ["Edmonton", "Alberta", "AB", "Canada"])).toBeNull();
+    expect(pickOption([...codes, "Canada (+1)"], "+1", ["Edmonton", "Alberta", "AB", "Canada"])).toBe("Canada (+1)");
+    expect(pickOption([...codes, "Canada (+1)"], "Canada (+1)", [])).toBe("Canada (+1)");
+    expect(pickOption(["Yes", "No"], "No", [])).toBe("No");
+  });
+
+  it("does not take two values for the same because their digits are", () => {
+    expect(showsPicked("Canada (+1)", "Anguilla (+1)")).toBe(false);
+    expect(showsPicked("May 2026", "June 2026")).toBe(false);
+    expect(showsPicked("7805550100", "(780) 555-0100")).toBe(true);
+    expect(showsPicked("T6J 1B5", "T6J1B5")).toBe(true);
+  });
+
+  it("takes the last step of a path as what a list shows once it is picked", () => {
+    expect(showsPicked("Job Board > Other", "Other")).toBe(true);
+    expect(showsPicked("Job Board > Other", "LinkedIn")).toBe(false);
+    expect(showsPicked("Canada", "Canada")).toBe(true);
+    expect(showsPicked("Canada", "Cameroon")).toBe(false);
   });
 });

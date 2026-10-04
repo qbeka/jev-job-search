@@ -193,6 +193,8 @@ export const FORM = {
   maxOptionsForJev: 40,
   /** How many lists under a list a dropdown is followed into: a choice that is a heading opens the choices under it. */
   maxListLevels: 2,
+  /** How many times a page that grew while its lists were being read is read again before it is planned. */
+  rereads: 2,
   /** How many of a form's boxes may be switched off when it is read back before the page counts as not on screen: this many, or this share of its boxes, whichever is more. */
   maxSwitchedOff: 3,
   switchedOffShare: 0.34,

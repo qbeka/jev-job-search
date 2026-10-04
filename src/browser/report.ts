@@ -5,7 +5,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { writeAtomic } from "../util/store.js";
-import { showsValue } from "../util/dates.js";
+import { showsPicked, showsValue } from "../util/dates.js";
 import path from "node:path";
 import { FORM, PATHS } from "../config.js";
 import type { FieldsDump, FillPlan } from "../forms/fields.js";
@@ -141,7 +141,8 @@ export function showsPlanned(f: { kind: string; value: string | null; optionLabe
     const expect = [f.optionLabel, value].filter((x): x is string => !!x);
     return !!shown && expect.some((e) => n(e) === n(shown) || showsValue(e, shown));
   }
-  if (["text", "email", "tel", "url", "number", "textarea", "combobox", "date"].includes(f.kind)) return showsValue(value, shown);
+  if (f.kind === "combobox") return showsPicked(value, shown);
+  if (["text", "email", "tel", "url", "number", "textarea", "date"].includes(f.kind)) return showsValue(value, shown);
   return !!shown;
 }
 

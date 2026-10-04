@@ -196,7 +196,8 @@
         for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
           const st = getComputedStyle(n);
           const r = n.getBoundingClientRect();
-          if (st.display === "none" || st.visibility === "hidden" || r.width === 0 || r.height === 0) why = `hidden at ${line(n)} (display ${st.display}, visibility ${st.visibility}, ${Math.round(r.width)}x${Math.round(r.height)})`;
+          // A box that only groups its children (display: contents) has no size of its own and hides nothing.
+          if (st.display === "none" || st.visibility === "hidden" || (st.display !== "contents" && (r.width === 0 || r.height === 0))) why = `hidden at ${line(n)} (display ${st.display}, visibility ${st.visibility}, ${Math.round(r.width)}x${Math.round(r.height)})`;
         }
       }
       return `${why}${dialogs.length ? `; over the page: ${dialogs.join(" | ")}` : ""}; url ${location.pathname.slice(-60)}`;

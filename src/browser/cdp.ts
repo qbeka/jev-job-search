@@ -335,6 +335,11 @@ export class Page {
     await this.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...at });
   }
 
+  /** Moves the pointer without pressing. A list that follows the pointer has to be given the time to do so before the click. */
+  async hover(x: number, y: number): Promise<void> {
+    await this.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+  }
+
   async type(text: string): Promise<void> {
     await this.send("Input.insertText", { text });
   }

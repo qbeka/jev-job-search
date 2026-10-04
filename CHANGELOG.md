@@ -23,7 +23,30 @@ changed for a person using the tool and what changed for a contributor.
   the box's value, the list that opens is its options, and a choice that
   opens a list under it is followed there.
 
+### Changed
+- A box that already shows the value it is meant to hold is left alone.
+  A draft a site kept from an earlier visit is no longer written over
+  box by box. On Workday, writing the country again redrew the name,
+  address and phone sections and emptied them.
+
 ### Fixed
+- A click in a long list waits for the list to stop moving under the
+  pointer. On Workday's country list the click landed on the row beside
+  the wanted one ("Cameroon" for "Canada"). It was caught and put right
+  on a second look, but not before the form had redrawn itself for the
+  wrong country.
+- Two values with the same digits and different words are no longer the
+  same: "Anguilla (+1)" does not pass for "Canada (+1)", nor "June 2026"
+  for "May 2026".
+- A short value that sits inside many options ("+1") picks none of them
+  unless one names the candidate's own country. On Workday the dial code
+  is asked for with its country, "Canada (+1)".
+- A page that was still drawing itself when it was read is read again
+  before it is planned, so no section is missed.
+- A choice that opens a list of its own ("Job Board" under "How did you
+  hear about us?") is answered as "Job Board > the one". When the answer
+  does not say which, the choices on offer go to the writer, and to you
+  when the profile cannot settle it.
 - A form whose boxes were not on screen when the page was read back is
   never called ready. On a real Workday form the page lay hidden for a
   moment after its lists were read; every box then looked switched off,

@@ -9,9 +9,9 @@ import type { Method } from "../knowledge/sites.js";
 import type { Profile } from "../profile/schema.js";
 import { sleep, type Page } from "./cdp.js";
 import { pickDate } from "./calendar.js";
-import { showsValue } from "../util/dates.js";
+import { showsPicked, showsValue } from "../util/dates.js";
 import { fillDropdown, fillDropdownByClicking } from "./dropdowns.js";
-import type { Failure, Fill } from "./report.js";
+import { showsPlanned, type Failure, type Fill } from "./report.js";
 import { controlStates, inFront, script, shownValues, trace, type Point } from "./session.js";
 
 /** Applies fills to the open form. Returns the ones that did not land. */
@@ -23,8 +23,13 @@ export type FillGuide = {
   landed: (selector: string, method: Method) => void;
 };
 
-export async function applyFills(page: Page, fills: Fill[], profile: Profile, guide?: FillGuide): Promise<Failure[]> {
+export async function applyFills(page: Page, wanted: Fill[], profile: Profile, guide?: FillGuide): Promise<Failure[]> {
   const failed: Failure[] = [];
+  // A box that already shows the value it is meant to hold is left alone: a draft the site kept, or an earlier pass.
+  // Writing it again gains nothing, and on some forms it sets off a redraw of everything that depends on it.
+  const before = wanted.length ? await shownValues(page, wanted.map((f) => f.selector)).catch(() => [] as string[]) : [];
+  const fills = wanted.filter((f, i) => !rightAlready(f, before[i] ?? ""));
+  if (fills.length < wanted.length) trace(`${wanted.length - fills.length} of ${wanted.length} box(es) already show their value and are left alone`);
   const how = new Map<string, Method>();
   const hints = [profile.address.city, profile.address.region, profile.address.regionCode, profile.address.country];
   // fillFields.js is a function expression under a comment header; the protocol wants the bare expression.
@@ -112,20 +117,25 @@ export async function applyFills(page: Page, fills: Fill[], profile: Profile, gu
       continue;
     }
     // A typed box must show the value it was given, in whatever shape the site writes it. Anything else is a retry.
-    const landed = !!shown[i] && (!(TYPED_KINDS.has(f.kind) || f.kind === "combobox") || showsValue(f.value, shown[i] ?? ""));
+    const landed = !!shown[i] && (f.kind === "combobox" ? showsPicked(f.value, shown[i] ?? "") : !TYPED_KINDS.has(f.kind) || showsValue(f.value, shown[i] ?? ""));
     if (landed) guide?.landed(f.selector, how.get(f.selector) ?? "script");
     if (landed || failed.some((x) => x.selector === f.selector)) continue;
     if (f.kind === "checkbox" && !/^(true|yes|1|on|checked)$/i.test(f.value)) continue;
     const why = f.kind === "combobox" ? await fillDropdownByClicking(page, f.selector, f.value, hints) : TYPED_KINDS.has(f.kind) ? await typeInto(page, f.selector, f.value) : f.kind === "radio" ? await clickGroupOption(page, f.selector, f.value) : "the page did not keep the value";
     const after = (await shownValues(page, [f.selector]))[0] ?? "";
     if (why || !after) failed.push({ selector: f.selector, why: why ?? "the page did not keep the value" });
-    else if ((TYPED_KINDS.has(f.kind) || f.kind === "combobox") && !showsValue(f.value, after)) failed.push({ selector: f.selector, why: `the box shows "${after.slice(0, 40)}" instead of "${f.value.slice(0, 40)}"` });
+    else if (f.kind === "combobox" ? !showsPicked(f.value, after) : TYPED_KINDS.has(f.kind) && !showsValue(f.value, after)) failed.push({ selector: f.selector, why: `the box shows "${after.slice(0, 40)}" instead of "${f.value.slice(0, 40)}"` });
     else guide?.landed(f.selector, TYPED_KINDS.has(f.kind) ? "typed" : "clicked");
   }
   return failed;
 }
 
 export const TYPED_KINDS = new Set(["text", "email", "tel", "url", "number", "textarea"]);
+
+/** True when a box shows the very value it is about to be given. Only a box that shows something counts: an unticked checkbox is written as before. */
+export function rightAlready(f: Fill, shown: string): boolean {
+  return !!shown && f.kind !== "file" && f.kind !== "calendar" && showsPlanned(f, shown);
+}
 
 /** Types into a field with real key input, for the rare control that ignores a value set from script. */
 function typeInto(page: Page, selector: string, value: string): Promise<string | null> {

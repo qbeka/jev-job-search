@@ -121,6 +121,17 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
 /** Fills the page the tab shows, from its dump, and reports what the page holds afterwards. */
 async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, d: FieldsDump, at: { page: number; earlier: FieldReport[]; started: number; jevCostUsd?: number; signal?: AbortSignal }): Promise<FillReport> {
   await readDropdownOptions(page, d.fields);
+  // A page that was still drawing itself when it was read has more on it now (Workday brings its sections in one by one).
+  // It is read again, so the plan is made from the whole page and not from its first half.
+  for (let read = 0; read < FORM.rereads; read++) {
+    const now = await dump(page);
+    const { fresh } = comparePages(d, now);
+    if (!fresh.length) break;
+    trace(`${job.company}: the page grew by ${fresh.length} field(s) while it was read, reading it again`);
+    for (const f of now.fields) f.options = f.options.length ? f.options : (d.fields.find((x) => x.selector === f.selector)?.options ?? []);
+    d = now;
+    await readDropdownOptions(page, d.fields);
+  }
   trace(`${job.company}: options read ${Date.now() - at.started}ms`);
   const plan = await mapForm(jev, profile, job, d);
   trace(`${job.company}: mapped ${Date.now() - at.started}ms`);

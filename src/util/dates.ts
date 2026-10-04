@@ -72,6 +72,15 @@ export function shapedForBox(value: string, boxText: string): string {
   return format.replace(/yyyy/, String(d.year)).replace(/mm/, String(d.month).padStart(2, "0")).replace(/dd/, String(d.day).padStart(2, "0"));
 }
 
+/** A choice inside a list under a heading is written "Heading > Choice". */
+export const CHOICE_PATH = /\s+>\s+/;
+
+/** True when a dropdown shows the choice that was meant: the whole value, or the last step of a path, which is what a list shows once it is picked. */
+export function showsPicked(want: string, shown: string): boolean {
+  const leaf = want.split(CHOICE_PATH).pop() ?? want;
+  return showsValue(want, shown) || (leaf !== want && showsValue(leaf, shown));
+}
+
 /**
  * True when what a box shows is the value that was meant. Sites reshape what they are given: a phone
  * gains brackets, a link gains its scheme, a date is written in the box's own format, and a long
@@ -93,7 +102,10 @@ export function showsValue(want: string, shown: string): boolean {
   const digits = (x: string) => x.replace(/\D/g, "");
   const dw = digits(w);
   const ds = digits(s);
-  if (dw && ds && (dw === ds || (Math.min(dw.length, ds.length) >= 7 && (dw.endsWith(ds) || ds.endsWith(dw))))) return true;
+  // Words beside the digits have to agree as well: "Anguilla (+1)" is not "Canada (+1)", and "June 2026" is not "May 2026".
+  const letters = (x: string) => x.replace(/[^a-z]/g, "");
+  const sameWords = !letters(w) || !letters(s) || letters(w) === letters(s);
+  if (sameWords && dw && ds && (dw === ds || (Math.min(dw.length, ds.length) >= 7 && (dw.endsWith(ds) || ds.endsWith(dw))))) return true;
   const d = toYmd(want);
   if (d && showsDate(shown, d)) return true;
   // A place picked from a list comes back in the list's own spelling: "Edmonton, Alberta, Canada" shows as "Edmonton, AB, CAN".

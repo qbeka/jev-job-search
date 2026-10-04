@@ -488,7 +488,9 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
     return { ...base, action: "review", key, value: null, confidence: a.confidence, note: "unknown field" };
   }
   if (isProfileKey(key)) {
-    const value = valueForJob(profile, job, key as FieldKey, f.label);
+    let value = valueForJob(profile, job, key as FieldKey, f.label);
+    // Workday lists a dial code under its country, "Canada (+1)", and many countries share one code. The country is the profile's own.
+    if (value !== null && key === "phone_country_code" && f.widget === "workday-prompt" && profile.address.country) value = `${profile.address.country} (${value})`;
     if (value === null) {
       if (key === "gpa") return { ...base, action: f.required ? "fill" : "skip", key, value: f.required ? gpaValue(profile) : null, confidence: a.confidence, note: f.required ? "GPA given only because the field is required" : "GPA not volunteered" };
       return { ...base, action: f.required ? "review" : "skip", key, value: null, confidence: a.confidence, note: f.required ? "required but the profile has no value" : null };
