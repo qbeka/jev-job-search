@@ -26,6 +26,9 @@ check before you publish a fork.*
 | Supplying references. A posting that requires them is skipped and logged. | `src/jobs/rate.ts`, the skill |
 | Clicking "Apply with LinkedIn" or resume-autofill helpers that would overwrite the plan. | `mapForm` skips autofill inputs; the skill |
 | Sending with nobody watching, outside the person's standing policy or the daily limits. `daily` does nothing without `data/policy.json`; every job is checked against it in code; per-day, per-board and per-employer numbers and the pauses between submissions are fixed in `DAILY`. A board that asks for a human check is left alone until tomorrow, and a second stops the run. Nothing is scheduled until the person runs `schedule install`. | `src/run/policy.ts`, `dailyRun` in `src/run/daily.ts`, `src/run/schedule.ts` |
+| Reading the body of an email, following anything an email says, or replying. `inbox` looks at the sender, the subject and Gmail's own preview; JEV sees only the subject and that preview, and only for an email the rules could not place. | `src/mail/status.ts` |
+| Answering a question about the right to work one form at a time. The dashboard has no box for it; the answer is one per country, in the profile. | `questionFor`, `saveAnswers` in `src/report/needs.ts` |
+| Taking a change from anything but its own dashboard page. | `fromThisPage`, `hasToken` in `src/report/server.ts` |
 | Submitting without being told to. `apply` fills and verifies; only `--submit` or `submit` sends. | `src/cli.ts`, the skill |
 
 The user can still misrepresent themselves by putting false data in the

@@ -232,9 +232,24 @@ export function saveDaily(s: DailySummary, file = dailyFile(s.date)): void {
   });
 }
 
+/** A run in one line: "12 submitted. 3 need you. 5 could not be sent." */
+export function resultLine(s: Pick<DailySummary, "sent" | "waiting" | "unconfirmed" | "leftForYou" | "dry">): string {
+  const needYou = s.waiting.length + s.unconfirmed.length;
+  return `${s.sent.length} ${s.dry ? "would be submitted" : "submitted"}. ${needYou} need${needYou === 1 ? "s" : ""} you. ${s.leftForYou.length} could not be sent.`;
+}
+
+/** Every run recorded for one day. */
+export function loadDaily(date: string, file = dailyFile(date)): DailySummary[] {
+  try {
+    return existsSync(file) ? (DailyFile.parse(JSON.parse(readFileSync(file, "utf8"))).runs as DailySummary[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function formatDaily(s: DailySummary): string {
   const names = (list: Line[]) => list.map((l) => `    ${l.company} | ${l.title}`).join("\n");
-  const out = [`${s.dry ? "Rehearsal. Nothing was sent. " : ""}${s.dry ? "Would have sent" : "Sent"} ${s.sent.length}${s.sentBefore ? ` (${s.sentBefore} more earlier today)` : ""} of ${s.target}. Stopped because ${s.stoppedBecause}.`];
+  const out = [resultLine(s), `${s.dry ? "Rehearsal. Nothing was sent. " : ""}${s.dry ? "Would have sent" : "Sent"} ${s.sent.length}${s.sentBefore ? ` (${s.sentBefore} more earlier today)` : ""} of ${s.target}. Stopped because ${s.stoppedBecause}.`];
   if (s.sent.length) out.push(names(s.sent));
   if (s.waiting.length) out.push(`  Waiting for you (${s.waiting.length}), each open in the tool's window. Then run: npx jev resume --submit`, ...s.waiting.map((l) => `    ${l.company} | ${l.title}: ${l.why}`));
   if (s.unconfirmed.length) out.push(`  Clicked and not confirmed (${s.unconfirmed.length}). To settle them: npx jev reconcile`, names(s.unconfirmed));

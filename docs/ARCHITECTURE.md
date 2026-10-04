@@ -272,6 +272,31 @@ run. The summary is appended to `data/runs/daily-<date>.json`.
 holds the path to Node, the project folder, the time and a search path,
 and nothing else.
 
+## The dashboard (`src/report/`) and replies (`src/mail/status.ts`)
+
+The dashboard is the tool's main screen for a person: `server.ts` serves
+one page and a few JSON routes on localhost, `page.ts` is that page with
+its style and script inline, `data.ts` builds the totals and the table,
+and `needs.ts` builds what waits for the person and saves what they
+answer. A POST is taken only from the page itself (`fromThisPage`), as
+JSON, with the token the server made at start and put in that page
+(`hasToken`).
+
+`buildNeeds` reads the queue and each set-aside job's last report. A
+review field becomes a question; `questionFor` decides whether the page
+may ask it (`ask`), or must point at the profile (`profile`: the right to
+work, per country) or at the form (`sign`). `saveAnswers` writes an answer
+to the job (`QueueEntry.answers`, merged into the profile that job's fill
+sees, `forJob` in the pipeline) or, when the person ticked "remember", to
+the profile's standing answers, and puts the job back in the queue.
+
+`readInbox` places replies: `candidatesFor` finds the applications an
+email could be about by company name, `kindByRules` names the kind from
+the subject and Gmail's preview, JEV is asked only when the rules are
+silent or say two things, and anything unsure is kept in
+`data/runs/inbox.json` for the person. `recordReply` (`src/run/inbox.ts`)
+puts a sure one on the record; any reply settles a `submission_unknown`.
+
 ## Accounts (`src/accounts/`) and verification mail (`src/mail/`)
 
 A board that wants an account is handled by an **adapter**. It names every

@@ -31,6 +31,8 @@ import { printFill } from "./print.js";
 export type RunOptions = { submit: boolean; dry: boolean; fresh: boolean; quiet: boolean; fillOnly?: boolean };
 
 const asJob = (e: QueueEntry) => e.job as unknown as Job;
+/** The profile as this one job sees it: with the answers the person gave for this job's own questions. */
+const forJob = (profile: Profile, e: QueueEntry | null): Profile => (e?.answers?.length ? { ...profile, answers: [...profile.answers, ...e.answers] } : profile);
 const hostOf = (url: string) => {
   try {
     return new URL(url).hostname;
@@ -126,7 +128,7 @@ export const endIfAbandoned = () => {
 async function fillOnce(jev: JevClient, profile: Profile, e: QueueEntry, dry = false): Promise<FillReport> {
   const attempt = new AbortController();
   let timer: NodeJS.Timeout | undefined;
-  const filling = fillJob(jev, profile, asJob(e), { signal: attempt.signal, dry });
+  const filling = fillJob(jev, forJob(profile, e), asJob(e), { signal: attempt.signal, dry });
   filling.catch(() => undefined);
   try {
     // A form behind a sign-in gets longer: the sign-in and its verification email take their own time.
@@ -156,7 +158,7 @@ const worthAnotherGo = (r: FillReport) => r.state === "filled" && r.page === 1 &
 /** Settles what JEV left open on the page a job's tab shows: from the answer memory, or by Claude. A writer error leaves the form as it was. */
 export async function resolvePage(jev: JevClient, profile: Profile, entry: QueueEntry | null, r: FillReport, fresh: boolean): Promise<FillReport> {
   try {
-    return await resolveJob(profile, entry, r.jobId, { jev, fresh });
+    return await resolveJob(forJob(profile, entry), entry, r.jobId, { jev, fresh });
   } catch (err) {
     return { ...r, ready: false, reason: `writer: ${err instanceof Error ? err.message : String(err)}` };
   }
@@ -402,7 +404,7 @@ async function walk(jev: JevClient, profile: Profile, e: QueueEntry, first: Fill
     if (r.state !== "filled") return r;
     r = await resolvePage(jev, profile, e, r, o.fresh);
     if (!shouldAdvance(r)) return r;
-    r = await nextPage(jev, profile, asJob(e), { dry: o.dry });
+    r = await nextPage(jev, forJob(profile, e), asJob(e), { dry: o.dry });
   }
 }
 

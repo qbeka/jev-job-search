@@ -27,7 +27,7 @@ export const SHEET_COLUMNS = [
 ] as const;
 
 export const EXTRA_COLUMNS = [
-  "Applied On", "Fit Score", "JEV Confidence", "ATS", "Source", "Term", "Level", "Posted On", "Skip Reason", "Job ID", "Take-home",
+  "Applied On", "Fit Score", "JEV Confidence", "ATS", "Source", "Term", "Level", "Posted On", "Skip Reason", "Job ID", "Take-home", "Response", "Response On",
 ] as const;
 
 export const COLUMNS = [...SHEET_COLUMNS, ...EXTRA_COLUMNS] as const;
@@ -141,7 +141,7 @@ export const APPLIED_COLUMNS = ["applied_on", "company", "role", "location", "jo
 export type AppliedRecord = Record<(typeof APPLIED_COLUMNS)[number], string>;
 
 /** One plain record per row of the full file. */
-export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason: string } {
+export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason: string; response: string; response_on: string } {
   return {
     applied_on: r["Applied On"],
     company: r.Company,
@@ -160,6 +160,8 @@ export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason:
     job_id: r["Job ID"],
     status: r["App. Status"],
     skip_reason: r["Skip Reason"],
+    response: r.Response ?? "",
+    response_on: r["Response On"] ?? "",
   };
 }
 
@@ -228,6 +230,8 @@ export function upsertEntry(rows: Row[], e: QueueEntry, extra: Partial<Row> = {}
     "Posted On": e.job.postedAt ?? "",
     "Skip Reason": e.status === "applied" || e.status === "queued" || e.status === "in_progress" ? "" : (e.statusReason ?? ""),
     "Job ID": e.job.id,
+    Response: e.response?.kind ?? existing.Response ?? "",
+    "Response On": e.response?.on ?? existing["Response On"] ?? "",
     ...extra,
   };
   if (idx >= 0) rows[idx] = next;

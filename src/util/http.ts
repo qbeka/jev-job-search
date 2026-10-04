@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { DISCOVER, PATHS } from "../config.js";
 
-const USER_AGENT = "jev-job-search/1.3 (+https://github.com/qbeka/jev-job-search)";
+const USER_AGENT = "jev-job-search/1.4 (+https://github.com/qbeka/jev-job-search)";
 
 export type GetOptions = {
   timeoutMs?: number;

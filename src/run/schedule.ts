@@ -4,7 +4,7 @@
  * `schedule remove` takes it away again. The Mac has to be on and signed in at that time.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { childEnv, DAILY, PATHS, ROOT } from "../config.js";
@@ -70,9 +70,23 @@ export function removeSchedule(o: { file?: string; run?: Launchctl } = {}): bool
   return was;
 }
 
-/** Whether a schedule is installed, and whether macOS has it loaded. */
-export function scheduleStatus(o: { file?: string; run?: Launchctl } = {}): { installed: boolean; loaded: boolean; file: string } {
+/** Whether a schedule is installed, whether macOS has it loaded, and the time of day it runs. */
+export function scheduleStatus(o: { file?: string; run?: Launchctl } = {}): { installed: boolean; loaded: boolean; file: string; at: string | null } {
   const file = o.file ?? agentFile();
   const installed = existsSync(file);
-  return { installed, loaded: installed && (o.run ?? launchctl)(["print", `${domain()}/${DAILY.label}`]).status === 0, file };
+  let at: string | null = null;
+  if (installed) {
+    const m = /<key>Hour<\/key><integer>(\d+)<\/integer><key>Minute<\/key><integer>(\d+)<\/integer>/.exec(readFileSync(file, "utf8"));
+    if (m) at = `${String(m[1]).padStart(2, "0")}:${String(m[2]).padStart(2, "0")}`;
+  }
+  return { installed, loaded: installed && (o.run ?? launchctl)(["print", `${domain()}/${DAILY.label}`]).status === 0, file, at };
+}
+
+/** The next moment a schedule at this time of day runs, after now. */
+export function nextRun(at: string, now = new Date()): Date | null {
+  const t = timeOfDay(at);
+  if (!t) return null;
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), t.hour, t.minute, 0);
+  if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+  return next;
 }

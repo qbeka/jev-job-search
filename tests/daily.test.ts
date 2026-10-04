@@ -20,7 +20,7 @@ function job(over: { ats?: string; company?: string; score?: number; tier?: stri
     preFilterReason: null,
     status: over.status ?? "queued",
     statusReason: null,
-    waitingFor: null,
+    waitingFor: null, answers: [], response: null,
     attempts: 0,
     discoveredAt: START.toISOString(),
     updatedAt: over.updatedAt ?? START.toISOString(),

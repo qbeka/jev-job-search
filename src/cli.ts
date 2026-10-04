@@ -18,10 +18,13 @@ import { acquireRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob } from "./browser/submit.js";
-import { ACCOUNTS, childEnv, DAILY, GMAIL, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
 import { dailyRun, formatDaily, localDay, saveDaily, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
+import { formatInbox, recordReplies } from "./run/inbox.js";
+import { readInbox } from "./mail/status.js";
+import { gmailClient } from "./mail/gmail.js";
 import { installSchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
 import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
@@ -58,7 +61,7 @@ process.stdout.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EPIPE") process.exit(0);
 });
 const program = new Command();
-program.name("jev-job-search").description("Find and rate software jobs with JEV, fill and check each application form in Chrome, and let Claude write what needs writing.").version("1.3.0");
+program.name("jev-job-search").description("Find and rate software jobs with JEV, fill and check each application form in Chrome, and let Claude write what needs writing.").version("1.4.0");
 
 const int = (v: string) => parseInt(v, 10);
 const whereTheRecordIs = () => `Applications you sent: ${PATHS.applied}\nJobs left for you to do by hand: ${PATHS.manual}\nTake-home assignments to do: ${PATHS.takehome}\nEvery job considered: ${PATHS.applications}`;
@@ -574,6 +577,19 @@ program
     } else {
       console.log("The actions are: connect, status, disconnect");
     }
+  });
+
+program
+  .command("inbox")
+  .description("Read your connected Gmail, read-only, for replies to applications you sent: received, rejected, an assessment, an interview, an offer. What the tool is sure of goes on the record; the rest waits for you in the dashboard")
+  .option("--days <n>", `how many days back to look (default ${INBOX.days})`, int)
+  .option("--json")
+  .action(async (o: { days?: number; json?: boolean }) => {
+    const client = gmailClient(defaultStore());
+    if (!client) return console.log("Gmail is not connected, so there is nothing to read. To connect it: /accounts gmail. docs/ACCOUNTS.md has the steps.");
+    const placed = await readInbox(client, new JevClient(), loadQueue().entries, o.days !== undefined ? { days: o.days } : {});
+    const summary = recordReplies(placed);
+    console.log(o.json ? JSON.stringify(summary, null, 2) : formatInbox(summary));
   });
 
 program

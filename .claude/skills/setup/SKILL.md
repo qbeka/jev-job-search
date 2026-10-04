@@ -127,23 +127,38 @@ Tell the user one thing before the first rehearsal: some job boards save a
 form as it is typed, so a rehearsal there leaves an unsent draft on that
 board. It is not an application and the employer is not told.
 
-## 8. Go
+## 8. One application, ready for them to read
 
-Ask two questions: how many applications to send now, and whether to send
-them without stopping at each one. Then follow the `/apply` skill. Nothing
-is sent before the user says so in their own words.
+Setup ends with a real application filled and waiting, not with a list of
+commands. Run `npx jev apply --count 1` on the best job in the queue that
+is on Greenhouse, Lever or Ashby. Without `--submit` the form is filled,
+checked and left open in the tool's Chrome window.
 
-When the run ends, show `npx jev log` and tell them where the
-records are: the `applications/` folder at the top of the project, where
-`applied.csv` lists what was sent and `manual.csv` lists the jobs the tool
-left for them with the reason and the link.
+Tell them to look at that window. Read the answers back to them, name
+anything the tool held, and ask: "Send this one?" Only when they say yes,
+run `npx jev submit <id>`. Then show the row in `npx jev log`.
 
-Tell them two things the tool will not do, so they are not surprised: it
-does not sign in to any site unless they set that up, and it does not pass
-a "prove you are human" check. Jobs behind a sign-in go on the by-hand
-list. Then offer the one optional step: a large share of postings are on
-Workday, where every employer wants its own account, and `/accounts` lets
-the tool use accounts there. It is off until they turn it on. If they want
-it, run the `/accounts` skill; if not, move on. A form waiting for an
-emailed code stays open for them to type the code, and `npx jev resume`
-records it.
+That is the whole loop. Say so in one sentence, then stop asking
+questions.
+
+## 9. What is next, in three lines
+
+Do not list commands. Say only:
+
+- `/apply` sends more: they say how many.
+- `/report` is the dashboard: what was sent, what needs them, and the
+  switch for a daily run.
+- `/status` says where things stand at any time.
+
+Mention these once, and only when they apply. Do not set any of them up
+during setup:
+
+- If many of the jobs they would want are on Workday (`npx jev status`
+  lists "workday" among the skip reasons), say that Workday employers each
+  want an account and `/accounts` handles that when they are ready.
+- If they asked for it to run by itself, `/daily`.
+
+Two things the tool will not do, so they are not surprised: it does not
+pass a "prove you are human" check, and it does not sign in anywhere
+unless they set that up. A form that needs them stays open in the tool's
+window; `/resume` picks it up.

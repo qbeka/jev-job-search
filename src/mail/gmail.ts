@@ -17,6 +17,7 @@ import type { SecretStore } from "../accounts/secrets.js";
 import { Secret } from "../util/redact.js";
 import { writeAtomic } from "../util/store.js";
 import type { Mail, MailClient } from "./verification.js";
+import type { BriefClient } from "./status.js";
 
 const GmailFile = z.object({ clientId: z.string().min(10), email: z.string().email(), connectedAt: z.string() });
 export type GmailFile = z.infer<typeof GmailFile>;
@@ -182,7 +183,7 @@ export function toMail(raw: unknown): Mail {
 }
 
 /** A read-only Gmail client for the connected mailbox, or null when none is connected. */
-export function gmailClient(store: SecretStore, opts: { file?: string; fetcher?: Fetch } = {}): MailClient | null {
+export function gmailClient(store: SecretStore, opts: { file?: string; fetcher?: Fetch } = {}): (MailClient & BriefClient) | null {
   const gmail = loadGmail(opts.file ?? PATHS.gmail);
   const fetcher = opts.fetcher ?? fetch;
   if (!gmail) return null;
@@ -203,6 +204,12 @@ export function gmailClient(store: SecretStore, opts: { file?: string; fetcher?:
     return res.json();
   };
   return {
+    async brief(id) {
+      const m = z.object({ id: z.string(), internalDate: z.string(), snippet: z.string().default(""), payload: z.object({ headers: z.array(z.object({ name: z.string(), value: z.string() })).default([]) }) }).parse(await get(`/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`));
+      const header = (name: string) => m.payload.headers.find((h) => h.name.toLowerCase() === name)?.value ?? "";
+      const from = header("from");
+      return { id: m.id, from: senderOf(from), fromName: from.replace(/<[^>]*>/g, " ").replace(/"/g, "").trim(), subject: header("subject"), snippet: m.snippet, receivedAt: Number(m.internalDate) };
+    },
     async search(query, max) {
       const list = z.object({ messages: z.array(z.object({ id: z.string() })).optional() }).parse(await get(`/messages?maxResults=${max}&q=${encodeURIComponent(query)}`));
       return (list.messages ?? []).map((m) => m.id);

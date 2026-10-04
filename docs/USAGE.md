@@ -376,9 +376,16 @@ None of this is built yet.
 - **SmartRecruiters.** Its form is drawn in a way the tool cannot read yet.
 - **Windows and Linux.** The tool is tested only on a Mac.
 
-- **What came back by email**: confirmations, rejections and interview
-  requests matched to your applications, and a review inbox.
 - **More boards with accounts.** Workday is the first; each further board
   is one adapter in `src/accounts/`.
+- **Download and open.** Today the tool is a repository you clone, with
+  Node and Claude Code installed first. A packaged desktop app, with the
+  dashboard as its window, would remove that. The command line would stay.
+- **One connection for both models.** Setup asks for Claude and for an
+  OpenRouter key. Writing through OpenRouter as well would make that one
+  key, billed there and not to a Claude subscription. Not built or tested.
+- **A shared Google sign-in for verification emails**, so nobody needs a
+  Google Cloud project of their own. That takes Google's review of the
+  app, which this project has not done.
 
 LinkedIn is not planned: its terms forbid automation.

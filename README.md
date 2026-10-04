@@ -6,7 +6,15 @@
 [![release](https://img.shields.io/github/v/release/qbeka/jev-job-search?label=release)](https://github.com/qbeka/jev-job-search/releases)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-An open-source job application tool built on [Claude Code](https://claude.com/claude-code). Clone it, fill in your profile, and let it find software internships and new-grad roles, fill the application forms in a Chrome window you can watch, read every answer back from the page, and send the ones you approve. A resume and a cover letter written for each job are one flag away.
+An open-source job application tool built on [Claude Code](https://claude.com/claude-code). It finds software internships and new-grad roles, fills the application forms in a Chrome window you can watch, reads every answer back from the page, and sends the ones you approve.
+
+| | |
+|---|---|
+| **Who it is for** | Students and new graduates applying to software roles in Canada, the United States or remotely, who are comfortable opening a terminal once. It writes in English. |
+| **What you need** | A Mac with Google Chrome, [Node.js](https://nodejs.org) 22, and [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max subscription. |
+| **What it costs** | Your Claude subscription, plus a few dollars of [OpenRouter](https://openrouter.ai/keys) credit for JEV: about 1 to 1.5 cents per 10 applications. Nothing else. |
+| **How to start** | Clone it, run `npm install`, open `claude` in the folder and type `/setup`. About 20 minutes, most of it your answers. It ends with one application filled and waiting for your yes. |
+| **What it does not do** | It does not lie on a form, pass a human check, or send what it could not verify. It is not a download-and-open app yet: there is no installer. |
 
 > This is an independent open-source project. It is not affiliated with, endorsed by or maintained by Anthropic, OpenRouter, or any job board. There is no token, coin or paid tier; the only ways to support it are using it and contributing on GitHub.
 
@@ -16,7 +24,7 @@ It is how I run my own search. I sent 100 applications in less than 10 minutes a
 
 ## What this is
 
-A command-line tool and nine Claude Code skills that run it with you in the loop. Two models share the thinking: [JEV](https://openrouter.ai/typesafe/jev-1.13) makes every decision that has a fixed set of answers (which of your details goes in this box, which option, how good a fit this job is) for a fraction of a cent, and Claude, on your own subscription, writes the sentences. The code does the rest: finds the jobs, drives Chrome, checks every answer on the page, and keeps your records.
+A command-line tool, a set of Claude Code skills that run it with you in the loop, and a dashboard on your own machine. Two models share the thinking: [JEV](https://openrouter.ai/typesafe/jev-1.13) makes every decision that has a fixed set of answers (which of your details goes in this box, which option, how good a fit this job is) for a fraction of a cent, and Claude, on your own subscription, writes the sentences. The code does the rest: finds the jobs, drives Chrome, checks every answer on the page, and keeps your records.
 
 ```
 /setup              /discover              /apply
@@ -93,10 +101,11 @@ A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like
 
 ## Other commands
 
-`/setup`, `/discover` and `/apply` are the workflow. Ten more skills extend it once your profile is in place. Each is typed in Claude Code as written; none needs a terminal:
+`/setup`, `/discover` and `/apply` are the workflow. Eleven more skills extend it once your profile is in place. Each is typed in Claude Code as written; none needs a terminal:
 
 - **`/tailor <job id> [--cover]`** writes a one-page resume for the job from your profile and the posting, and with `--cover` a one-page cover letter, and shows you the PDFs. Every number and every name of a tool, a place or a company in the draft is checked against your profile in code; the keywords the posting wants and your profile cannot support are listed, never stuffed in. `/apply --tailor --cover` writes and attaches them as it applies. See [A resume and a cover letter written for the job](#a-resume-and-a-cover-letter-written-for-the-job).
-- **`/report`** opens a dashboard on your own machine: applications sent, today, waiting for you, left for you; sent per day and per board; every job with its status, which you can change by hand, and a notes box per row. `npx jev report --static applications/report.html` writes a snapshot page to keep. Nothing leaves your machine.
+- **`/report`** opens the dashboard on your own machine, the main screen once you are set up. **Today** is the day in one line. **Needs you** lists everything only you can do: a question a form asked that your profile could not answer, with a box and "Save answer and continue"; a form waiting for a code or a sign-in, with "Show the form"; a submission that was never confirmed. **Applications** is every job with its status, your notes and the reply that came back. **Automation** is the daily run as a switch, a time and your rules. Nothing leaves your machine.
+- **`/inbox`** reads your connected Gmail, read-only, for replies to applications you sent: received, rejected, an assessment, an interview, an offer. It looks at the sender, the subject and Gmail's own short preview, never the body. What it is not sure of waits for you under "Needs you".
 - **`/expand`** reads the public places your profile already links to (your GitHub repositories, your portfolio site) and proposes projects, skills and facts that are missing from the profile, each with its source. Nothing is added without your yes.
 - **`/add-source`** adds a job board or a public list as a source: it inspects the site, writes the source in the shape of the shipped ones, tests it on a captured sample and runs one live query before registering it.
 - **`/accounts`** lets the tool apply on Workday, where every employer wants its own account. The simple way: `/accounts signin <employer>` opens that employer's page, you sign in once yourself, and the tool keeps the session. Storing a password, and letting the tool make accounts for you (experimental), are there when you want them. Off until you turn it on. See [Jobs that want an account](#jobs-that-want-an-account).
@@ -119,6 +128,7 @@ Every skill runs a command you can also type yourself, as `npx jev <command>` fr
 | `/daily dry`, `/daily run`, `/daily schedule 09:00`, `/daily stop` | `npx jev daily --dry`, `npx jev daily`, `npx jev schedule install --at 09:00`, `npx jev schedule remove` |
 | `/resume` | `npx jev resume`, `npx jev reconcile` |
 | `/status` | `npx jev status`, `npx jev doctor`, `npx jev cost`, `npx jev log` |
+| `/inbox` | `npx jev inbox --days 7` |
 
 `npx jev log --open` opens your applications in your spreadsheet program, `npx jev knowledge --share` copies what your runs learned about job sites into the repo for a pull request (site names and kinds of controls, nothing about you), and `npx jev --help` lists everything, including the apply loop one step at a time (`fill`, `resolve`, `submit`, `check`, `inspect`, `set`).
 
@@ -137,6 +147,7 @@ jev-job-search/
 │   ├── add-source/            # /add-source: a new job board or list
 │   ├── accounts/              # /accounts: boards that want an account (Workday)
 │   ├── daily/                 # /daily: the daily run and its schedule
+│   ├── inbox/                 # /inbox: replies to your applications, from your mail
 │   ├── resume/                # /resume: pick up the forms that wait for you
 │   ├── status/                # /status: where you stand, in a few lines
 │   └── profile/               # /profile: change what the tool knows about you
@@ -310,8 +321,11 @@ npx jev templates --use mine
 - **It will not read your email**, with one exception you can turn on: the
   email an employer sends to prove your address when an account is made.
   Access is read-only, and that one email is all it looks for.
-- **It will not write a cover letter or give references.** It skips jobs
-  that require them.
+- **It will not make up references.** A job that requires them is skipped.
+- **It will not write a cover letter unless you asked for one**, with
+  `/apply --cover` or in your profile. Without that, a job that requires
+  one is skipped. A letter it does write is checked against your profile
+  like the resume.
 - **It will not give your GPA** unless the form cannot be sent without it,
   or you chose to always give it.
 

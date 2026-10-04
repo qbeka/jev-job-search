@@ -45,6 +45,8 @@ export const PATHS = {
   /** The person's standing instructions for the daily run. Without this file `daily` does nothing. */
   policy: path.join(ROOT, "data", "policy.json"),
   policyExample: path.join(ROOT, "data", "policy.example.json"),
+  /** Emails already looked at for replies, and the ones waiting for the person to confirm. */
+  inbox: path.join(ROOT, "data", "runs", "inbox.json"),
   /** Boards the daily run leaves alone until a date, because they asked for a human check or refused a burst. */
   boardPauses: path.join(ROOT, "data", "runs", "board-pauses.json"),
   /** What the scheduled run prints. */
@@ -310,6 +312,21 @@ export const DOCUMENTS = {
   maxLetterWords: 260,
   /** Words that may be capitalized in a sentence without being a claim about the candidate. */
   plainWords: ["I", "A", "An", "The", "My", "In", "At", "On", "For", "With", "And", "As", "To", "Of", "This", "That", "It", "We", "You", "Your", "Our", "If", "When", "While", "After", "Before", "Over", "Since", "Through", "Then", "There", "Here", "What", "Which", "Who", "How", "Why", "Yes", "No", "Dear", "Hi", "Hello", "Sincerely", "Best", "Regards", "Thank", "Thanks", "Team", "Hiring", "Manager", "Regarding", "Re"],
+} as const;
+
+/** Reading the mailbox for replies to applications (`src/mail/status.ts`). */
+export const INBOX = {
+  /** How many days back a run looks, and how many emails it reads at most. */
+  days: 7,
+  maxMessages: 60,
+  /** How much of an email JEV is shown, when the rules cannot name it: its subject and Gmail's own preview, cut to these lengths. */
+  subjectChars: 160,
+  snippetChars: 240,
+  /** JEV's answer is taken only at or above this confidence. Under it the email waits for the person. */
+  jevConfidence: 0.8,
+  /** A company name shorter than this is too common a word to match on. */
+  minCompanyChars: 4,
+  clockSkewMs: 10 * 60_000,
 } as const;
 
 /**

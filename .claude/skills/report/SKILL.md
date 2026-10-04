@@ -1,6 +1,6 @@
 ---
 name: report
-description: Show the user their job-search dashboard. Use when the user says /report, "show me my applications", "how is the search going", or wants to change the status of an application by hand. Starts a page on their own machine that reads every record and lets them set a status or a note per row.
+description: Open the user's dashboard, the main screen of the tool. Use when the user says /report, "show me my applications", "how is the search going", "what needs me", "open the dashboard", or wants to answer a form's question, change a status, or turn the daily run on or off without typing commands.
 model: claude-sonnet-5-5
 effort: low
 ---
@@ -13,17 +13,33 @@ Run from the repo root:
 npx jev report --open
 ```
 
-It starts a page on the user's machine (`http://127.0.0.1:4545`) and opens
-it. The page reads `applications/all.csv` and shows: applications sent,
-today, waiting for the user, left for the user, queued, skipped; sent per
-day and per job board; every job considered by status; and a table with
-tabs (Applied, Left for you, Take-home, Queued, Everything), a filter, and
-sortable columns.
+It starts a page on the user's own machine (`http://127.0.0.1:4545`) and
+opens it. Nothing leaves the machine. The command keeps running until they
+press Ctrl-C. The page has four screens:
 
-Each row has a status select and a notes box. A change is saved at once to
-the queue and the records, the same as `mark <id> --status ...`. Tell the
-user that, and that the command keeps running until they press Ctrl-C.
+- **Today.** One line (sent today, waiting, ready to apply to), the
+  totals, and three small charts.
+- **Needs you.** Everything only they can do, each with its button:
+  - a question a form asked that their profile could not answer. They
+    type or pick the answer and press "Save answer and continue"; the job
+    goes back in the queue. "Remember for future applications" keeps the
+    answer as a standing answer. A question about the right to work has no
+    box: that answer is one per country and lives in the profile
+    (`/profile`).
+  - a form open and waiting (an emailed code, a robot check, a sign-in):
+    "Show the form" brings it to the front, "Find the email" opens their
+    mail at a search for it. They do it, then `/resume`.
+  - a form clicked and never confirmed: "I got a confirmation", or "It was
+    not sent".
+  - an email the tool could not place: they pick the application and what
+    it says.
+- **Applications.** Every job, with tabs, a filter, a status select, a
+  notes box, and the reply that came back.
+- **Automation.** The daily run: an "Apply automatically" switch with a
+  time, the next run, a Pause button, their daily rules as a form, and
+  today's result in one line. Turning the switch on installs the schedule;
+  that is their click, not yours.
 
-`npx jev report --static applications/report.html` writes a self-contained
-snapshot page instead, for keeping or sending; statuses cannot be changed
-from a snapshot.
+`npx jev report --static applications/report.html` writes a snapshot page
+with Today and Applications only, for keeping or sending. Nothing can be
+changed from a snapshot.

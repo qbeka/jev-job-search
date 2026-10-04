@@ -28,6 +28,10 @@ export const QueueStatus = z.enum([
 export type QueueStatus = z.infer<typeof QueueStatus>;
 
 /** What a form in awaiting_user_action waits for. */
+/** What an employer's email says about an application. */
+export const Response = z.enum(["confirmation", "rejection", "assessment", "interview", "offer"]);
+export type Response = z.infer<typeof Response>;
+
 export const WaitingFor = z.enum(["human_code", "robot_check", "login", "agreement", "phone", "passkey", "sso", "email_link", "unknown"]);
 export type WaitingFor = z.infer<typeof WaitingFor>;
 
@@ -78,6 +82,10 @@ export const QueueEntry = z.object({
   notes: z.string().nullable(),
   /** Set with awaiting_user_action: what the person has to do. */
   waitingFor: WaitingFor.nullable().default(null),
+  /** Answers the person gave for this one job, to questions its form asked and the profile could not answer. */
+  answers: z.array(z.object({ question: z.string(), answer: z.string() })).default([]),
+  /** What came back by email, once the mailbox was read: the kind of reply and the day. */
+  response: z.object({ kind: Response, on: z.string(), subject: z.string() }).nullable().default(null),
 });
 export type QueueEntry = z.infer<typeof QueueEntry>;
 
@@ -144,6 +152,8 @@ export function entryFor(job: Job, fit: FitResult | null, preFilterReason: strin
     appliedAt: null,
     notes: null,
     waitingFor: null,
+    answers: [],
+    response: null,
   };
   if (!previous) return fresh;
   // Keep what a run or a person decided, and the history; refresh the job and rating.
@@ -157,6 +167,8 @@ export function entryFor(job: Job, fit: FitResult | null, preFilterReason: strin
     discoveredAt: previous.discoveredAt,
     appliedAt: previous.appliedAt,
     notes: previous.notes,
+    answers: previous.answers ?? [],
+    response: previous.response ?? null,
   };
 }
 
