@@ -294,6 +294,12 @@ export async function nextPage(jev: JevClient, profile: Profile, job: Job, opts:
     await settle(page);
     await install(page);
     d = await dump(page);
+    // A next page that is still coming in shows nothing yet. It is given a little longer before anything is concluded from it.
+    for (let look = 0; look < FORM.rereads && !d.fields.length && !d.submitSelectors.length && !d.hasPassword; look++) {
+      await sleep(BROWSER.retryAfterMs / 2);
+      await settle(page);
+      d = await dump(page);
+    }
     const earlier = [...r.earlier, ...r.fields];
     const cost = r.jevCostUsd;
     if (d.hasPassword) return saveReport({ ...blockedReport(job, SIGN_IN_REASON, d.url), earlier, page: r.page + 1 });

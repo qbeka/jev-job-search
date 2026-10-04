@@ -94,6 +94,8 @@ const SPONSOR_Q = /sponsor/i;
 /** A tick that accepts something: terms, an agreement, a notice. */
 const AGREEMENT_Q = /\b(agree|agreement|acknowledg|consent|terms|privacy|arbitration|attest|certify|accept)/i;
 /** Ticks that say the application is true or that a privacy notice was read: every application needs them. */
+/** A box that says the person goes by a name other than their legal one. */
+const PREFERRED_NAME_BOX = /\b(i have|i use|i go by)\b[^.]{0,30}\b(preferred|different|another) name\b/i;
 const ROUTINE_AGREEMENT = /\b(privacy|true|accurate|correct|complete|information (?:i|provided|above)|data (?:protection|processing))/i;
 
 export type Category = "contact_other" | "authorization" | "sponsorship" | "agreement" | "general";
@@ -430,6 +432,13 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
   if (!answer) return { ...base, action: "review", key: "unknown", value: null, confidence: 0, note: "no answer" };
 
   if (f.kind === "checkbox") {
+    // Whether the person goes by another name is a fact in the profile, not a judgement about the box.
+    if (PREFERRED_NAME_BOX.test(f.label)) {
+      const other = !!profile.name.preferred && profile.name.preferred !== profile.name.first;
+      return other
+        ? { ...base, action: "fill", key: "checked", value: "true", confidence: 1, note: "the profile gives a preferred name" }
+        : { ...base, action: "skip", key: "unchecked", value: null, confidence: 1, note: "the profile gives no other name" };
+    }
     const p = (answer as NoulAnswer).noul;
     if (p >= FORM.gates.tick) {
       // Accepting an agreement is the person's: the tool ticks it when their standing answers say so, or when it only says the application is true.

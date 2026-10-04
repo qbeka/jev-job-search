@@ -251,8 +251,11 @@ async function clickAndPick(page: Page, selector: string, whole: string, hints: 
   let shown = "";
   // One kind of list is pressed on the option itself (see pressOption). If that took, there is nothing to click.
   if (await page.awj<boolean>("pressOption", selector, choice).catch(() => false)) {
-    await sleep(BROWSER.pollMs);
-    shown = (await shownValues(page, [selector]))[0] ?? "";
+    // The box takes a moment to show the pick.
+    for (const deadline = Date.now() + BROWSER.optionsMs / 4; Date.now() < deadline && !showsValue(choice, shown); ) {
+      await sleep(BROWSER.pollMs);
+      shown = (await shownValues(page, [selector]))[0] ?? "";
+    }
   }
   if (!shown || !showsValue(choice, shown)) {
     const p = await steadyPoint(page, selector, choice);

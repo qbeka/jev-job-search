@@ -55,6 +55,12 @@ changed for a person using the tool and what changed for a contributor.
   for instead of being reported as not found.
 - A list that only draws the rows in view is gone through to its end
   when the wanted choice is not in sight.
+- A page that is in place but out of sight is not read yet. Workday hides
+  a page while it saves and while it brings the next one in; the tool
+  read the second page of a form in that moment, found nothing and
+  stopped.
+- "I have a preferred name" is ticked only when the profile gives a name
+  other than the first name.
 - A remembered answer that a list turned down is not given to that list
   again. The question goes back to the writer with what the list offers.
 - A form whose boxes were not on screen when the page was read back is

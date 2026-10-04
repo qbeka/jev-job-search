@@ -57,7 +57,11 @@ export async function install(page: Page): Promise<void> {
  */
 export const SETTLE_EXPR = `(() => {
   if (document.readyState === "loading") return "-1";
-  const n = document.querySelectorAll("input, select, textarea, [role=combobox]").length;
+  const controls = [...document.querySelectorAll("input, select, textarea, [role=combobox]")];
+  const n = controls.length;
+  // A form that is in the page and out of sight is not ready to be read: Workday hides a page while it saves and while it brings the next one in.
+  const inSight = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  if (n >= 3 && !controls.some((el) => el.type !== "hidden" && inSight(el)) && !controls.every((el) => el.type === "hidden")) return "-1";
   let h = 0;
   for (const el of document.querySelectorAll("label, legend, option, [role=option]")) {
     const t = el.textContent || "";

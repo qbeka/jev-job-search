@@ -136,6 +136,11 @@ describe("planField", () => {
   it("checks consent boxes and leaves opt-ins alone", () => {
     expect(planField(field({ kind: "checkbox", label: "I certify the above is accurate" }), { type: "noul", noul: 0.95 }, profile, j)).toMatchObject({ action: "fill", value: "true" });
     expect(planField(field({ kind: "checkbox", label: "Send me job alerts" }), { type: "noul", noul: 0.05 }, profile, j).action).toBe("skip");
+    // Whether the person goes by another name is the profile's to say, however sure JEV is about the box.
+    const plain = { ...profile, name: { first: profile.name.first, last: profile.name.last } } as typeof profile;
+    expect(planField(field({ kind: "checkbox", label: "I have a preferred name" }), { type: "noul", noul: 0.94 }, plain, j)).toMatchObject({ action: "skip", key: "unchecked" });
+    const other = { ...profile, name: { ...profile.name, preferred: "Sam" } } as typeof profile;
+    expect(planField(field({ kind: "checkbox", label: "I have a preferred name" }), { type: "noul", noul: 0.1 }, other, j)).toMatchObject({ action: "fill", value: "true" });
   });
   it("never fills salary", () => {
     const p = planField(field({ label: "Salary expectation" }), { type: "choice", choice: "salary_expectation", probabilities: {}, confidence: 0.95 }, profile, j);
