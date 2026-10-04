@@ -84,7 +84,9 @@ export const QueueEntry = z.object({
   waitingFor: WaitingFor.nullable().default(null),
   /** Answers the person gave for this one job, to questions its form asked and the profile could not answer. */
   answers: z.array(z.object({ question: z.string(), answer: z.string() })).default([]),
-  /** What came back by email, once the mailbox was read: the kind of reply and the day. */
+  /** Every reply that came back by email, as it was read: the kind, when the mailbox received it, and which email it was. Nothing is ever taken out. */
+  replies: z.array(z.object({ id: z.string(), kind: Response, at: z.number(), subject: z.string() })).default([]),
+  /** Where the application stands, worked out from `replies` by `outcomeOf`: the kind of the reply that counts now, and its day. */
   response: z.object({ kind: Response, on: z.string(), subject: z.string() }).nullable().default(null),
 });
 export type QueueEntry = z.infer<typeof QueueEntry>;
@@ -153,6 +155,7 @@ export function entryFor(job: Job, fit: FitResult | null, preFilterReason: strin
     notes: null,
     waitingFor: null,
     answers: [],
+    replies: [],
     response: null,
   };
   if (!previous) return fresh;
@@ -168,6 +171,7 @@ export function entryFor(job: Job, fit: FitResult | null, preFilterReason: strin
     appliedAt: previous.appliedAt,
     notes: previous.notes,
     answers: previous.answers ?? [],
+    replies: previous.replies ?? [],
     response: previous.response ?? null,
   };
 }

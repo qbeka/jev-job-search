@@ -1,6 +1,6 @@
 {
   "name": "jev-job-search",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "description": "Finds software internships and new-grad roles, rates them with JEV, fills and verifies each application in seconds, and submits it.",
   "type": "module",

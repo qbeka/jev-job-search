@@ -9,8 +9,8 @@ import { BROWSER, PATHS } from "../config.js";
 import { loadReport } from "../browser/report.js";
 import { loadSession } from "../browser/session.js";
 import { categoryOf } from "../forms/mapForm.js";
-import { mutateQueue, updateEntry, type QueueEntry } from "../jobs/queue.js";
-import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
+import { loadQueue, mutateQueue, updateEntry, type QueueEntry } from "../jobs/queue.js";
+import { loadRows, saveRows, statusLabel, upsertEntry } from "../log/csv.js";
 import { loadInbox } from "../mail/status.js";
 import { ProfileSchema } from "../profile/schema.js";
 import { mailSearchUrl, waitingWords } from "../run/assist.js";
@@ -86,16 +86,40 @@ export function buildNeeds(entries: QueueEntry[], o: { report?: typeof loadRepor
 
 export type Answer = { question: string; answer: string; remember: boolean };
 
+/** The page showed something that is no longer so: the job moved on since it was loaded. */
+export class Stale extends Error {}
+
+/** The questions a set-aside job's last report left open, by their words. */
+function openQuestions(id: string, report: typeof loadReport): Set<string> {
+  try {
+    const r = report(id);
+    return new Set([...r.reviews.map((v) => v.label), ...r.drafts.map((d) => d.label)]);
+  } catch {
+    return new Set();
+  }
+}
+
 /**
- * Saves the person's answers to a job's open questions and puts the job back in the queue. An
- * answer they asked to keep becomes a standing answer in the profile; the rest belong to this one
- * job. A question about the right to work is refused here: that is the profile's, per country.
+ * Saves the person's answers to a job's open questions and puts the job back in the queue for the
+ * next run. An answer they asked to keep becomes a standing answer in the profile; the rest
+ * belong to this one job. A question about the right to work is refused here: that is the
+ * profile's, per country.
+ *
+ * The page may be old. So the job is looked at again, under the lock, before anything is written:
+ * only a job that is still set aside with these very questions open is put back. One that was
+ * sent, may have been sent, waits on the person, or is being worked on is never touched.
  */
-export function saveAnswers(id: string, answers: Answer[], files: { profile?: string; queue?: string; rows?: string } = {}): { company: string; title: string; kept: number } {
+export function saveAnswers(id: string, answers: Answer[], files: { profile?: string; queue?: string; rows?: string; report?: typeof loadReport } = {}): { company: string; title: string; kept: number } {
   const clean = answers.map((a) => ({ question: a.question.trim().slice(0, 700), answer: a.answer.trim().slice(0, 4000), remember: a.remember })).filter((a) => a.question && a.answer);
   for (const a of clean) if (questionFor(a.question, "text", [], "").kind !== "ask") throw new Error("that question is not one to answer here");
   const keep = clean.filter((a) => a.remember);
   return withStore(() => {
+    const now = loadQueue(files.queue).entries.find((x) => x.job.id === id);
+    if (!now) throw new Error(`No queue entry with id ${id}`);
+    if (now.status !== "needs_review") throw new Stale(`${now.job.company} is no longer waiting for an answer (it is now: ${statusLabel(now).replace(/:.*$/s, "").toLowerCase()}). Nothing was changed. Reload the page.`);
+    const open = openQuestions(id, files.report ?? loadReport);
+    const gone = clean.find((a) => !open.has(a.question));
+    if (gone) throw new Stale(`"${gone.question.slice(0, 60)}" is not a question ${now.job.company}'s form has open now. Nothing was changed. Reload the page.`);
     if (keep.length) {
       const file = files.profile ?? PATHS.profile;
       const raw = JSON.parse(readFileSync(file, "utf8")) as { answers?: { question: string; answer: string }[] };

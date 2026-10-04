@@ -10,28 +10,30 @@ import { z } from "zod";
 import { DAILY, PATHS, REPORT } from "../config.js";
 import { loadQueue, mutateQueue, Response as ReplyKind, RUN_OWNED, updateEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
-import { loadDaily, localDay } from "../run/daily.js";
+import { loadDaily, localDay, requestStop, stopRequested } from "../run/daily.js";
 import { settleReview } from "../run/inbox.js";
 import { loadPolicy, Policy } from "../run/policy.js";
 import { installSchedule, nextRun, removeSchedule, scheduleStatus } from "../run/schedule.js";
 import { currentRun, withStore, writeAtomic } from "../util/store.js";
 import { buildReport, StatusChange } from "./data.js";
-import { buildNeeds, saveAnswers, showForm } from "./needs.js";
+import { buildNeeds, saveAnswers, showForm, Stale } from "./needs.js";
 import { reportPage } from "./page.js";
 
 /** Applies one change from the page: the queue entry and the record row both move. A job a live run is working on is refused. */
-export function applyStatusChange(c: StatusChange): { company: string; title: string } {
+export function applyStatusChange(c: StatusChange, files: { queue?: string; rows?: string } = {}): { company: string; title: string } {
   return withStore(() => {
     const e = mutateQueue((q) => {
       const was = q.entries.find((x) => x.job.id === c.id);
       if (c.status && was && RUN_OWNED.includes(was.status) && currentRun()) throw new Busy(`a run is working on ${was.job.company} right now`);
+      // The page may be old: a status is changed only from the one the person was looking at.
+      if (c.status && was && c.was !== undefined && c.was !== was.status) throw new Busy(`${was.job.company} changed since this page was loaded. Nothing was changed. Reload the page.`);
       return updateEntry(q, c.id, {
         ...(c.status ? { status: c.status, statusReason: c.reason ?? null, waitingFor: null } : {}),
         ...(c.notes !== undefined ? { notes: c.notes } : {}),
         ...(c.status === "applied" ? { appliedAt: new Date().toISOString() } : {}),
       });
-    });
-    saveRows(upsertEntry(loadRows(), e, c.notes !== undefined ? { Notes: c.notes } : {}));
+    }, files.queue);
+    saveRows(upsertEntry(loadRows(files.rows), e, c.notes !== undefined ? { Notes: c.notes } : {}), files.rows);
     return { company: e.job.company, title: e.job.title };
   });
 }
@@ -57,6 +59,9 @@ export function automation(now = new Date()) {
     schedule: { on: schedule.installed && schedule.loaded, at: schedule.at ?? DAILY.at, next: schedule.installed && schedule.at ? (nextRun(schedule.at, now)?.toISOString() ?? null) : null },
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     today: loadDaily(localDay(now)),
+    /** True while a daily run is working, and whether it was asked to stop after its current application. */
+    running: (currentRun()?.command ?? "").startsWith("daily"),
+    stopAsked: stopRequested(),
   };
 }
 
@@ -124,6 +129,8 @@ export function startReportServer(port: number = REPORT.port): Promise<string> {
       if (url.pathname === "/api/status") {
         const p = StatusChange.safeParse(body);
         if (!p.success) return bad(p.error);
+        // The page says which status it was showing, so an old page cannot move a job that has moved on.
+        if (p.data.status && p.data.was === undefined) return json(res, { error: "say which status the job had" }, 400);
         const changed = applyStatusChange(p.data);
         console.log(`${changed.company} | ${changed.title} → ${p.data.status ?? "notes"}`);
         return json(res, { ok: true });
@@ -160,6 +167,11 @@ export function startReportServer(port: number = REPORT.port): Promise<string> {
         }
         return json(res, { ok: true });
       }
+      if (url.pathname === "/api/stop") {
+        requestStop();
+        console.log("the daily run was asked to stop after its current application");
+        return json(res, { ok: true });
+      }
       if (url.pathname === "/api/mail") {
         const p = MailAnswer.safeParse(body);
         if (!p.success) return bad(p.error);
@@ -167,7 +179,7 @@ export function startReportServer(port: number = REPORT.port): Promise<string> {
       }
       send(res, 404, "text/plain", "not found");
     } catch (err) {
-      json(res, { error: err instanceof Error ? err.message : String(err) }, err instanceof Busy ? 409 : 500);
+      json(res, { error: err instanceof Error ? err.message : String(err) }, err instanceof Busy || err instanceof Stale ? 409 : 500);
     }
   });
   return new Promise((resolve, reject) => {

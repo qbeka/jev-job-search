@@ -5,22 +5,28 @@
  */
 import { mutateQueue, updateEntry, type QueueEntry, type Response } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
-import { dayOfMail, mutateInbox, outranks, type Placed } from "../mail/status.js";
+import { dayOfMail, mutateInbox, outcomeOf, type Placed } from "../mail/status.js";
 import { withStore } from "../util/store.js";
 
 type Reply = { id: string; kind: Response; receivedAt: number; subject: string };
 /** Where the records are. Only a test names other files. */
 export type RecordFiles = { queue?: string; rows?: string; inbox?: string };
 
-/** Puts one reply on one application's record. A reply that says less than the one already there changes nothing. */
+/**
+ * Adds one reply to an application's history and works out where the application stands now.
+ * The history only grows. An email already recorded is not recorded again. Null when there is no
+ * such application, or nothing changed.
+ */
 export function recordReply(jobId: string, r: Reply, files: RecordFiles = {}): QueueEntry | null {
   return withStore(() => {
     const e = mutateQueue((q) => {
       const was = q.entries.find((x) => x.job.id === jobId);
-      if (!was || !outranks(r.kind, was.response?.kind)) return null;
+      if (!was || (was.replies ?? []).some((x) => x.id === r.id)) return null;
+      const replies = [...(was.replies ?? []), { id: r.id, kind: r.kind, at: r.receivedAt, subject: r.subject.slice(0, 200) }];
+      const now = outcomeOf(replies);
       // Any reply from the employer proves the application reached them.
       const settles = was.status === "submission_unknown";
-      return updateEntry(q, jobId, { response: { kind: r.kind, on: dayOfMail(r.receivedAt), subject: r.subject.slice(0, 200) }, ...(settles ? { status: "applied" as const, statusReason: null, waitingFor: null, appliedAt: was.appliedAt ?? was.updatedAt } : {}) });
+      return updateEntry(q, jobId, { replies, response: now ? { kind: now.kind, on: dayOfMail(now.at), subject: now.subject } : null, ...(settles ? { status: "applied" as const, statusReason: null, waitingFor: null, appliedAt: was.appliedAt ?? was.updatedAt } : {}) });
     }, files.queue);
     if (e) saveRows(upsertEntry(loadRows(files.rows), e), files.rows);
     return e;

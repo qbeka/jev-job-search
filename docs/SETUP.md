@@ -10,7 +10,8 @@ git clone https://github.com/qbeka/jev-job-search && cd jev-job-search && npm in
 
 Then type `/setup`. Claude asks for your resume, asks what the resume does
 not say, opens `.env` for you to paste your OpenRouter key, finds jobs,
-rehearses three forms, and waits for you to say "go". The questions it asks
+rehearses three forms without sending so you can correct what it got
+wrong, and ends with one real application filled and waiting for your yes. The questions it asks
 are listed in `.claude/skills/setup/questions.md`.
 
 At any point, this command lists what is in place and names the next step:

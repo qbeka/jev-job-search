@@ -49,6 +49,8 @@ export const PATHS = {
   inbox: path.join(ROOT, "data", "runs", "inbox.json"),
   /** Boards the daily run leaves alone until a date, because they asked for a human check or refused a burst. */
   boardPauses: path.join(ROOT, "data", "runs", "board-pauses.json"),
+  /** Left by the person to ask a daily run that is working to stop after its current application. */
+  dailyStop: path.join(ROOT, "data", "runs", "daily.stop"),
   /** What the scheduled run prints. */
   dailyLog: path.join(ROOT, "data", "runs", "daily.log"),
   /** The job-board accounts the person allowed, and the rule for making new ones. No secret is in it. */

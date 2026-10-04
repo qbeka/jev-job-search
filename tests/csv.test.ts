@@ -8,7 +8,7 @@ import type { QueueEntry } from "../src/jobs/queue.js";
 const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   job: { id: "abc", source: "simplify-internships", company: "Acme", title: "SWE Intern", url: "https://x/1", ats: "greenhouse", locations: ["Toronto, ON"], postedAt: "2026-10-01", terms: ["Summer 2027"], sponsorship: "unknown", degrees: [], category: null },
   fit: { score: 0.61, decision: "apply", skipReason: null, reasons: ["stack strong"], components: {}, locationTier: "canada", answers: { work_auth: { type: "choice", choice: "canada_ok", probabilities: {}, confidence: 0.9 }, term: { type: "choice", choice: "summer", probabilities: {}, confidence: 1 }, level: { type: "choice", choice: "internship", probabilities: {}, confidence: 1 } } },
-  preFilterReason: null, status: "queued", statusReason: null, attempts: 0, discoveredAt: "2026-10-02T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z", appliedAt: null, notes: null, waitingFor: null, answers: [], response: null, ...over,
+  preFilterReason: null, status: "queued", statusReason: null, attempts: 0, discoveredAt: "2026-10-02T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z", appliedAt: null, notes: null, waitingFor: null, answers: [], replies: [], response: null, ...over,
 });
 
 describe("csv", () => {

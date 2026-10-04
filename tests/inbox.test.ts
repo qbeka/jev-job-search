@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { QueueEntry } from "../src/jobs/queue.js";
 import { loadQueue, saveQueue } from "../src/jobs/queue.js";
 import { loadRows } from "../src/log/csv.js";
-import { candidatesFor, companyKey, inboxQuery, kindByRules, loadInbox, readInbox, type BriefClient, type MailBrief } from "../src/mail/status.js";
-import { buildNeeds, questionFor, saveAnswers } from "../src/report/needs.js";
-import { fromThisPage, hasToken } from "../src/report/server.js";
-import { formatInbox, recordReplies, settleReview } from "../src/run/inbox.js";
+import { candidatesFor, companyKey, inboxQuery, kindByRules, loadInbox, outcomeOf, readInbox, type BriefClient, type MailBrief } from "../src/mail/status.js";
+import { buildNeeds, questionFor, saveAnswers, Stale } from "../src/report/needs.js";
+import { applyStatusChange, Busy, fromThisPage, hasToken } from "../src/report/server.js";
+import { formatInbox, recordReplies, recordReply, settleReview } from "../src/run/inbox.js";
 
 const SENT = "2026-10-01T15:00:00.000Z";
 const LATER = Date.parse("2026-10-03T15:00:00.000Z");
@@ -23,6 +23,7 @@ const job = (company: string, title = "Software Engineer Intern", over: Partial<
     statusReason: null,
     waitingFor: null,
     answers: [],
+    replies: [],
     response: null,
     attempts: 1,
     discoveredAt: SENT,
@@ -40,6 +41,8 @@ const jev = (answer: string, confidence: number) => {
 };
 
 let files: { queue: string; rows: string; inbox: string; profile: string };
+/** A last report that left these questions open. */
+const asks = (...labels: string[]) => (() => ({ reviews: labels.map((label, i) => ({ id: `f${i}`, selector: `#q${i}`, kind: "text", label, options: [], why: "required but mapped to leave blank" })), drafts: [] })) as never;
 beforeEach(() => {
   n = 0;
   const dir = mkdtempSync(path.join(tmpdir(), "jev-inbox-"));
@@ -59,6 +62,11 @@ describe("what an email says", () => {
     expect(kindByRules("Acme online assessment", "Please complete this HackerRank coding challenge within 5 days.")).toBe("assessment");
     expect(kindByRules("Offer", "We are pleased to offer you the position.")).toBe("offer");
     expect(kindByRules("Weekly jobs digest", "New roles you might like")).toBeNull();
+    // Saying no takes the words for it. Each of these says no:
+    for (const no of ["We have decided not to move forward with your application.", "We decided to not proceed.", "We have decided to move forward with other candidates.", "We are pursuing other applicants at this time.", "You were not selected for this role.", "You are no longer under consideration.", "We will not be proceeding with your candidacy."]) expect(kindByRules("Your application", no), no).toBe("rejection");
+    // And each of these does not, though it shares words with one that does:
+    for (const yes of ["We have decided to proceed with your application.", "We have decided to move you forward.", "We are still reviewing other candidates and will be in touch.", "You have been selected to move on to the next stage."]) expect(kindByRules("Your application", yes), yes).not.toBe("rejection");
+    expect(kindByRules("Good news", "We have decided to proceed and would like to schedule an interview with you.")).toBe("interview");
     // An assessment that leads to an interview is two things at once: not for a rule to decide.
     expect(kindByRules("Next steps", "Complete the coding challenge, then we will schedule an interview with you.")).toBe("unclear");
   });
@@ -133,6 +141,35 @@ describe("reading the mailbox", () => {
     expect(loadInbox(files.inbox).review).toEqual([]);
   });
 
+  it("goes by when each reply came, not by the order they were read in, and keeps every one", () => {
+    const day = (d: number) => Date.parse(`2026-10-${String(d).padStart(2, "0")}T15:00:00Z`);
+    const at = (kind: "confirmation" | "rejection" | "assessment" | "interview" | "offer", d: number) => ({ id: `${kind}${d}`, kind, at: day(d), subject: kind });
+    // A rejection after an offer replaces it. An old rejection does not undo a newer interview.
+    expect(outcomeOf([at("offer", 5), at("rejection", 9)])?.kind).toBe("rejection");
+    expect(outcomeOf([at("interview", 9), at("rejection", 3)])?.kind).toBe("interview");
+    // "We received your application" says nothing new once the employer has said more, whenever it came.
+    expect(outcomeOf([at("interview", 4), at("confirmation", 6)])?.kind).toBe("interview");
+    expect(outcomeOf([at("confirmation", 2)])?.kind).toBe("confirmation");
+    expect(outcomeOf([])).toBeNull();
+
+    const [id = ""] = seed([job("Acme")]);
+    const reply = (kind: "rejection" | "interview" | "confirmation", d: number) => recordReply(id, { id: `${kind}${d}`, kind, receivedAt: day(d), subject: `${kind} on the ${d}th` }, files);
+    reply("confirmation", 2);
+    reply("interview", 9);
+    // Found in the mailbox last, though it is the oldest: an earlier role's rejection, say.
+    reply("rejection", 3);
+    const e = loadQueue(files.queue).entries[0];
+    expect(e?.response).toEqual({ kind: "interview", on: "2026-10-09", subject: "interview on the 9th" });
+    expect(e?.replies.map((r) => r.kind)).toEqual(["confirmation", "interview", "rejection"]);
+    // The same email read again adds nothing.
+    expect(reply("rejection", 3)).toBeNull();
+    expect(loadQueue(files.queue).entries[0]?.replies).toHaveLength(3);
+    // A rejection that comes after the interview does replace it.
+    reply("rejection", 12);
+    expect(loadQueue(files.queue).entries[0]?.response?.on).toBe("2026-10-12");
+    expect(loadRows(files.rows)[0]).toMatchObject({ Response: "rejection", "Response On": "2026-10-12" });
+  });
+
   it("names the one application whose title the email gives, and keeps a rejection over a later thank-you", async () => {
     seed([job("Acme", "Backend Intern"), job("Acme", "Frontend Intern")]);
     const no = mail({ subject: "Acme: Frontend Intern", snippet: "Unfortunately we will not be moving forward with your application." });
@@ -156,6 +193,7 @@ describe("answering a form's open question in the dashboard", () => {
     copyFileSync(path.join(__dirname, "..", "data", "profile.example.json"), files.profile);
     const before = (JSON.parse(readFileSync(files.profile, "utf8")) as { answers: unknown[] }).answers.length;
     const [id = ""] = seed([job("Acme", "Backend Intern", { status: "needs_review", statusReason: "empty: Which team interests you most?" })]);
+    Object.assign(files, { report: asks("Which team interests you most?", "How did you hear about this role?", "Empty one", "Are you authorized to work in Canada?") });
     const saved = saveAnswers(id, [{ question: "Which team interests you most?", answer: "Platform", remember: false }, { question: "How did you hear about this role?", answer: "A public list of internships", remember: true }, { question: "Empty one", answer: "  ", remember: true }], files);
     expect(saved).toMatchObject({ company: "Acme", kept: 1 });
     const e = loadQueue(files.queue).entries[0];
@@ -166,6 +204,32 @@ describe("answering a form's open question in the dashboard", () => {
     // The right to work is never answered here, whatever the page sends.
     expect(() => saveAnswers(id, [{ question: "Are you authorized to work in Canada?", answer: "Yes", remember: true }], files)).toThrow(/not one to answer here/);
     expect((JSON.parse(readFileSync(files.profile, "utf8")) as { answers: unknown[] }).answers).toHaveLength(before + 1);
+  });
+
+  it("changes nothing from a page that is out of date", () => {
+    copyFileSync(path.join(__dirname, "..", "data", "profile.example.json"), files.profile);
+    const profile = readFileSync(files.profile, "utf8");
+    const answer = [{ question: "Which team?", answer: "Platform", remember: true }];
+    const withReport = { ...files, report: asks("Which team?") };
+    // The page showed the question while the job was set aside. Since then the job was sent, or may have been, or a run took it.
+    for (const status of ["applied", "submission_unknown", "in_progress", "awaiting_user_action", "queued", "skipped"] as const) {
+      const [id = ""] = seed([job("Acme", "Backend Intern", { status })]);
+      expect(() => saveAnswers(id, answer, withReport), status).toThrow(Stale);
+      expect(loadQueue(files.queue).entries[0], status).toMatchObject({ status, answers: [] });
+    }
+    // The job is still set aside, but its form was filled again and now asks something else.
+    const [id = ""] = seed([job("Acme", "Backend Intern", { status: "needs_review" })]);
+    expect(() => saveAnswers(id, answer, { ...files, report: asks("Why us?") })).toThrow(/not a question Acme's form has open now/);
+    expect(loadQueue(files.queue).entries[0]?.status).toBe("needs_review");
+    // In every case the profile was left as it was.
+    expect(readFileSync(files.profile, "utf8")).toBe(profile);
+    // A status set from an old page is refused the same way: here the page still showed "unconfirmed" and a reply has since settled it.
+    const [sent = ""] = seed([job("Globex", "Intern", { status: "applied" })]);
+    expect(() => applyStatusChange({ id: sent, status: "queued", was: "submission_unknown" }, files)).toThrow(Busy);
+    expect(loadQueue(files.queue).entries[0]?.status).toBe("applied");
+    // From the status it really has, the person's own choice goes through.
+    applyStatusChange({ id: sent, status: "needs_review", was: "applied" }, files);
+    expect(loadQueue(files.queue).entries[0]?.status).toBe("needs_review");
   });
 
   it("lists the questions of a job that was set aside, from its last report", () => {

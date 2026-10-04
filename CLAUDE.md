@@ -138,7 +138,10 @@ doctor` says what is in place and what to do next.
   localhost, checks the Host and Origin, and takes a change only with the
   token it gave its page (`src/report/server.ts`). An answer saved there
   goes to one job, or to the profile's standing answers when the person
-  said to remember it. A question about the right to work is never
+  said to remember it, and only while that job is still set aside with
+  that question open: the page may be old, so every change is checked
+  against the job as it is now, under the lock (`saveAnswers`,
+  `applyStatusChange`). A question about the right to work is never
   answered there: that is one answer per country, in the profile.
 - **Pace every site.** Job boards drop or refuse bursts. Concurrency and
   gaps per host are in `RUN`; do not remove them to go faster.

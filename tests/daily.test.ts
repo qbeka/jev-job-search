@@ -4,7 +4,7 @@ import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DAILY } from "../src/config.js";
 import type { QueueEntry } from "../src/jobs/queue.js";
-import { boardOf, countToday, dailyRun, formatDaily, loadPauses, localDay, pauseBoard, saveDaily, type DailyDeps, type Outcome } from "../src/run/daily.js";
+import { boardOf, clearStop, countToday, dailyRun, formatDaily, loadPauses, localDay, pauseBoard, requestStop, saveDaily, stopRequested, type DailyDeps, type Outcome } from "../src/run/daily.js";
 import { loadPolicy, Policy, policyRefuses } from "../src/run/policy.js";
 import { agentPlist, installSchedule, removeSchedule, scheduleStatus, timeOfDay } from "../src/run/schedule.js";
 
@@ -20,7 +20,7 @@ function job(over: { ats?: string; company?: string; score?: number; tier?: stri
     preFilterReason: null,
     status: over.status ?? "queued",
     statusReason: null,
-    waitingFor: null, answers: [], response: null,
+    waitingFor: null, answers: [], replies: [], response: null,
     attempts: 0,
     discoveredAt: START.toISOString(),
     updatedAt: over.updatedAt ?? START.toISOString(),
@@ -195,6 +195,23 @@ describe("the daily run", () => {
     const budget = await dailyRun(policy({ jevBudgetUsd: 0.004 }), { dry: false }, w.deps);
     expect(budget.stoppedBecause).toMatch(/JEV has cost/);
     expect(w.ran).toHaveLength(2);
+  });
+
+  it("stops when asked, after the application it is on and before the next", async () => {
+    const entries = [job({ score: 0.9 }), job({ score: 0.8, ats: "lever" }), job({ score: 0.7, ats: "ashby" })];
+    const w = world(entries);
+    // The person asks while the first application is being filled.
+    w.deps.stop = () => w.ran.length >= 1;
+    const s = await dailyRun(policy({ target: 3 }), { dry: false }, w.deps);
+    expect(w.ran).toEqual(["j1"]);
+    expect(s.sent).toHaveLength(1);
+    expect(s.stoppedBecause).toBe("you asked it to stop");
+    const file = path.join(w.dir, "daily.stop");
+    expect(stopRequested(file)).toBe(false);
+    requestStop(file);
+    expect(stopRequested(file)).toBe(true);
+    clearStop(file);
+    expect(stopRequested(file)).toBe(false);
   });
 
   it("never asks for more than the hard limit, whatever the flag says", async () => {

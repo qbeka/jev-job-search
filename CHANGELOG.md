@@ -13,6 +13,39 @@ changed for a person using the tool and what changed for a contributor.
 
 Nothing yet.
 
+## [1.4.1] - 2026-10-03
+
+Fixes from a review of 1.4.0.
+
+### Fixed
+- **An old dashboard page could put a sent application back in the
+  queue.** Saving an answer now looks at the job again, under the lock:
+  only a job that is still set aside, with that very question open, is put
+  back. One that was sent, may have been sent, waits on you or is being
+  worked on is refused, and nothing is written. A status set from the page
+  is refused the same way when the job has moved on since the page loaded.
+- **"We have decided to proceed" was read as a rejection.** The rule now
+  needs the words for no ("decided not to", "with other candidates", "not
+  selected", and so on), with examples of both kinds in the tests.
+- **Replies went by a fixed ranking, not by when they came.** An older
+  rejection read late could replace a newer interview, and a rejection
+  after an offer could not replace it. Every reply is now kept with its
+  time, and where an application stands is the latest one that says
+  something; "we received your application" counts only when it is all
+  there is.
+
+### Changed
+- The dashboard's button is "Save for next run", which is what it does:
+  nothing is sent then. "Pause" is "Pause future runs" and removes the
+  schedule; a new "Stop it after this application" asks a run that is
+  working to stop, as do `/daily stop` and `daily --stop`. `/daily pause`
+  is the schedule's off switch.
+- The daily budget is said to be what it is, a limit on JEV: Claude runs
+  on your subscription or your own key and is not counted. A run reads its
+  rules once, when it starts.
+- The README says which checks the software performs where it used to say
+  "never", and says one thing about how setup ends.
+
 ## [1.4.0] - 2026-10-03
 
 Accounts on Workday, a daily run, a dashboard that is the main screen,

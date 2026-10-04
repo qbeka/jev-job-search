@@ -36,7 +36,7 @@ const needs: Needs = {
   unconfirmed: [{ id: "u1", company: "Initech", title: "New Grad Engineer", link: "https://jobs.example.com/initech/2" }],
   mail: [{ id: "m1", from: "Hooli Careers", subject: "An update on your application", on: "2026-10-03", kind: null, why: "the tool could not tell what it says", jobs: [{ id: "h1", company: "Hooli", title: "SWE Intern" }] }],
 };
-const automation = { policy: null, policyError: "", defaults: Policy.parse({}), limits: { maxTarget: DAILY.maxTarget, perBoard: DAILY.perBoard, perEmployerPerDay: DAILY.perEmployerPerDay, gapMinutes: [3, 6], maxMinutes: DAILY.maxMinutes }, schedule: { on: false, at: "09:00", next: null }, timezone: "America/Vancouver", today: [] };
+const automation = { running: true, stopAsked: false, policy: null, policyError: "", defaults: Policy.parse({}), limits: { maxTarget: DAILY.maxTarget, perBoard: DAILY.perBoard, perEmployerPerDay: DAILY.perEmployerPerDay, gapMinutes: [3, 6], maxMinutes: DAILY.maxMinutes }, schedule: { on: false, at: "09:00", next: null }, timezone: "America/Vancouver", today: [] };
 
 describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real browser", () => {
   let chrome: ChildProcess;
@@ -125,6 +125,19 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     for (let i = 0; i < 30 && posts.length < 2; i++) await sleep(100);
     expect(posts[1]).toMatchObject({ path: "/api/policy", token: TOKEN, body: { target: 7, excludeEmployers: ["Acme", "Globex"], where: [], documents: { tailor: false, cover: false } } });
     expect(Policy.safeParse(posts[1]?.body).success).toBe(true);
+    // The answer button says what it does: nothing is sent now.
+    expect(text).toMatch(/Save for next run/);
+    expect(text).not.toMatch(/and continue/);
+    // A run that is working can be asked to stop, apart from pausing the schedule.
+    expect(auto).toMatch(/A run is working now/);
+    expect(auto).toMatch(/JEV only/);
+    await page.evaluate("document.querySelector('#autoStop').click()");
+    for (let i = 0; i < 30 && posts.length < 3; i++) await sleep(100);
+    expect(posts[2]).toMatchObject({ path: "/api/stop", token: TOKEN });
+    // A status set from the page carries the status the page was showing.
+    await page.evaluate("(() => { document.querySelector('[data-screen=needs]').click(); document.querySelector('[data-set=u1][data-to=applied]').click(); })()");
+    for (let i = 0; i < 30 && posts.length < 4; i++) await sleep(100);
+    expect(posts[3]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "u1", status: "applied", was: "submission_unknown" } });
     expect(errors).toEqual([]);
     page.close();
   }, 60_000);

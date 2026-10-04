@@ -7,7 +7,7 @@
  * The loop itself touches no browser: `run` does one job and says what became of it, so every
  * rule here is tested offline.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { DAILY, PATHS } from "../config.js";
@@ -52,6 +52,19 @@ export function pauseBoard(board: string, why: string, now: Date, file = PATHS.b
   });
 }
 
+/**
+ * Asking a daily run that is working to stop. It finishes the application it is on and opens no
+ * other: a form is never abandoned half sent. The request is a small file, so the dashboard or
+ * another terminal can leave it.
+ */
+export function requestStop(file = PATHS.dailyStop): void {
+  writeAtomic(file, new Date().toISOString());
+}
+export const stopRequested = (file = PATHS.dailyStop): boolean => existsSync(file);
+export function clearStop(file = PATHS.dailyStop): void {
+  rmSync(file, { force: true });
+}
+
 export type Outcome = { status: QueueEntry["status"]; waitingFor: QueueEntry["waitingFor"]; reason: string | null; ready: boolean; report: FillReport | null };
 
 export type DailyDeps = {
@@ -68,6 +81,8 @@ export type DailyDeps = {
   /** What JEV has cost since the local day began. */
   jevSpentToday: () => number;
   log: (line: string) => void;
+  /** True once the person asked this run to stop. Looked at before every application. */
+  stop?: () => boolean;
   pausesFile?: string;
 };
 
@@ -150,6 +165,7 @@ export async function dailyRun(policy: Policy, o: { target?: number; maxAttempts
     const day = countToday(entries, today);
     // In a rehearsal nothing is recorded, so what it would have sent is counted from the run itself.
     const done = o.dry ? before.sent + before.unconfirmed + summary.sent.length : day.sent + day.unconfirmed;
+    if (deps.stop?.()) return end("you asked it to stop");
     if (done >= target) return end(`the day's ${target} applications are done`);
     if (challenged.size >= DAILY.challengesStopRun) return end(`${challenged.size} boards asked for a human check, so the run stopped for today`);
     if (attempts >= maxAttempts) return end(`the run opened ${attempts} jobs, its limit`);
@@ -181,6 +197,7 @@ export async function dailyRun(policy: Policy, o: { target?: number; maxAttempts
       if (freeAt(soonest) >= deadline) return end("the run reached its time limit");
       deps.log(`  waiting ${Math.ceil((freeAt(soonest) - at) / 60_000)} min before the next application to ${boardOf(soonest.job)}`);
       await deps.sleep(freeAt(soonest) - at);
+      if (deps.stop?.()) return end("you asked it to stop");
       next = soonest;
     }
 

@@ -25,7 +25,8 @@ export interface BriefClient {
 }
 
 const RULES: [Response, RegExp][] = [
-  ["rejection", /unfortunately|regret to inform|not (be )?(moving|proceeding|going) forward|decided (not )?to (not )?(move|proceed)|other candidates|not (been )?selected|will not be (moving|proceeding)|position has been filled|unable to offer/i],
+  // Each of these says no in so many words. "We have decided to proceed" and "we are reviewing other candidates" do not.
+  ["rejection", /unfortunately|regret to inform|\bnot (?:be )?(?:moving|proceeding|going) forward|decided (?:not to|to not|against) (?:mov|proceed|continu|go|pursu)|(?:move|moving|proceed|proceeding|go|going) (?:forward|ahead) with (?:an)?other (?:candidate|applicant)s?|pursu(?:e|ing) other (?:candidate|applicant)s|\b(?:not|n['’]t) (?:been )?selected\b|will not be (?:moving|proceeding|continuing)|no longer (?:under consideration|being considered)|position has been filled|unable to offer/i],
   ["offer", /(pleased|delighted|excited|happy) to (offer|extend)|offer letter|your offer\b|offer of employment/i],
   ["interview", /(schedule|book|set up|arrange)\b[^.]{0,40}\b(interview|call|chat|conversation)|invit(e|ed|ation)\b[^.]{0,40}\binterview|interview (invitation|request|availability)|your availability|phone screen|would like to (speak|talk|meet) with you/i],
   ["assessment", /assessment|coding (challenge|test|exercise)|online (test|assessment)|hackerrank|codesignal|codility|take[- ]home|technical (test|exercise|challenge)/i],
@@ -149,9 +150,20 @@ export async function readInbox(client: BriefClient, jev: JevClient | null, entr
   return out;
 }
 
-/** A reply that says more replaces one that says less: a rejection after a confirmation, never the other way round. */
-const WEIGHT: Record<Response, number> = { confirmation: 1, assessment: 2, interview: 3, rejection: 4, offer: 5 };
-export const outranks = (now: Response, was: Response | null | undefined) => !was || WEIGHT[now] >= WEIGHT[was];
+export type ReplyEvent = { id: string; kind: Response; at: number; subject: string };
+
+/**
+ * Where an application stands, from every reply it got: the latest one counts, by the time the
+ * mailbox received it and not by the order the tool read them in. So an old rejection read late
+ * does not undo a newer interview, and a rejection after an offer does replace it. One exception:
+ * a note that the application was received says nothing new once the employer has said more, so
+ * it counts only when it is all there is.
+ */
+export function outcomeOf(replies: ReplyEvent[]): ReplyEvent | null {
+  const inOrder = [...replies].sort((a, b) => a.at - b.at);
+  const said = inOrder.filter((r) => r.kind !== "confirmation");
+  return said.at(-1) ?? inOrder.at(-1) ?? null;
+}
 
 export const dayOfMail = (ms: number) => {
   const d = new Date(ms);

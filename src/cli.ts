@@ -14,13 +14,13 @@ import { inspect, setValues } from "./browser/formRunner.js";
 import { loadReport, type Fill, type FillReport } from "./browser/report.js";
 import { closeJobTab, loadSession } from "./browser/session.js";
 import { clearBrowsingData, closeTab, ensureBrowser, listTargets, newTab, Page, sleep } from "./browser/cdp.js";
-import { acquireRun } from "./util/store.js";
+import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob } from "./browser/submit.js";
 import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
-import { dailyRun, formatDaily, localDay, saveDaily, type Outcome } from "./run/daily.js";
+import { clearStop, dailyRun, formatDaily, localDay, requestStop, saveDaily, stopRequested, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
 import { formatInbox, recordReplies } from "./run/inbox.js";
 import { readInbox } from "./mail/status.js";
@@ -61,7 +61,7 @@ process.stdout.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EPIPE") process.exit(0);
 });
 const program = new Command();
-program.name("jev-job-search").description("Find and rate software jobs with JEV, fill and check each application form in Chrome, and let Claude write what needs writing.").version("1.4.0");
+program.name("jev-job-search").description("Find and rate software jobs with JEV, fill and check each application form in Chrome, and let Claude write what needs writing.").version("1.4.1");
 
 const int = (v: string) => parseInt(v, 10);
 const whereTheRecordIs = () => `Applications you sent: ${PATHS.applied}\nJobs left for you to do by hand: ${PATHS.manual}\nTake-home assignments to do: ${PATHS.takehome}\nEvery job considered: ${PATHS.applications}`;
@@ -184,8 +184,14 @@ program
   .option("--max-minutes <n>", "how long this run may last", int)
   .option("--dry", "a rehearsal: fill and check, send nothing, record nothing")
   .option("--no-discover", "use the queue as it is, without searching for new jobs first")
+  .option("--stop", "ask a daily run that is working now to stop after the application it is on")
   .option("--json", "print the summary as JSON")
-  .action(async (o: { target?: number; maxAttempts?: number; maxMinutes?: number; dry?: boolean; discover: boolean; json?: boolean }) => {
+  .action(async (o: { target?: number; maxAttempts?: number; maxMinutes?: number; dry?: boolean; discover: boolean; stop?: boolean; json?: boolean }) => {
+    if (o.stop) {
+      const running = (currentRun()?.command ?? "").startsWith("daily");
+      if (running) requestStop();
+      return console.log(running ? "Asked. The run finishes the application it is on, opens no other, and writes its summary." : "No daily run is working right now.");
+    }
     const policy = loadPolicy();
     if (!policy) {
       console.log(`The daily run sends applications with nobody watching, so it needs your standing policy first: ${PATHS.policy} does not exist.\nRun /daily in Claude Code, or copy data/policy.example.json to data/policy.json and make it yours.`);
@@ -207,12 +213,15 @@ program
       return { status: e?.status ?? "failed", waitingFor: e?.waitingFor ?? null, reason: e?.statusReason ?? null, ready: !!reports[0]?.ready, report: reports[0] ?? null };
     };
     const summary = await inRun(`daily${dry ? " --dry" : ""}`, async () => {
+      // A request to stop is for the run it was made to: an old one must not end this run before it starts.
+      clearStop();
       if (o.discover) {
         say(`[daily] ${localDay(new Date())}: looking for jobs`);
         await discover(loadProfile(), jev, { boards: true, log: say }).catch((err: unknown) => say(`[daily] the search failed, so the queue is used as it is: ${err instanceof Error ? err.message : String(err)}`));
       }
-      return dailyRun(policy, { ...(o.target !== undefined ? { target: o.target } : {}), ...(o.maxAttempts !== undefined ? { maxAttempts: o.maxAttempts } : {}), ...(o.maxMinutes !== undefined ? { maxMinutes: o.maxMinutes } : {}), dry }, { now: () => new Date(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)), random: Math.random, queue: () => loadQueue().entries, run, gate: () => accountGate(), jevSpentToday, log: say });
+      return dailyRun(policy, { ...(o.target !== undefined ? { target: o.target } : {}), ...(o.maxAttempts !== undefined ? { maxAttempts: o.maxAttempts } : {}), ...(o.maxMinutes !== undefined ? { maxMinutes: o.maxMinutes } : {}), dry }, { now: () => new Date(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)), random: Math.random, queue: () => loadQueue().entries, run, gate: () => accountGate(), jevSpentToday, log: say, stop: stopRequested });
     });
+    clearStop();
     if (!dry) {
       saveDaily(summary);
       await noteApplied(sent);

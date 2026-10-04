@@ -100,7 +100,7 @@ ${embedded}
         j.items.map((x, n) => '<p class="q">' + esc(x.question) + "</p>" + (x.kind !== "ask" ? '<p class="note warn">' + esc(x.note) + "</p>" :
           (x.options.length ? '<select data-q="' + n + '"><option value="">Choose</option>' + x.options.map((o) => "<option>" + esc(o) + "</option>").join("") + "</select>" : '<textarea data-q="' + n + '" placeholder="Your answer, in your own words"></textarea>') +
           '<p class="note"><label><input type="checkbox" data-keep="' + n + '"> Remember for future applications</label></p>')).join("") +
-        (ask.length ? '<button class="btn" data-answer="' + esc(j.id) + '">Save answer and continue</button><span class="saved" id="saved-' + esc(j.id) + '"></span><p class="note">The job goes back in the queue and is sent with your next run.</p>' : "") + "</div>");
+        (ask.length ? '<button class="btn" data-answer="' + esc(j.id) + '">Save for next run</button><span class="saved" id="saved-' + esc(j.id) + '"></span><p class="note">Nothing is sent now. The job goes back in the queue, and your next /apply or daily run fills it with this answer.</p>' : "") + "</div>");
     }
     if (needs.waiting.length) out.push("<h2>Forms open and waiting for you</h2>");
     for (const w of needs.waiting) out.push('<div class="item"><h4>' + esc(w.company) + ": " + esc(w.todo) + '</h4><p class="note">' + esc(w.title) + "</p><p>" + esc(w.reason) + "</p>" +
@@ -108,7 +108,7 @@ ${embedded}
       (w.mail ? '<a class="btn quiet" href="' + esc(w.mail) + '" target="_blank" rel="noopener">Find the email</a>' : "") +
       '<p class="note">Do it in the tool\u2019s Chrome window, then type /resume in Claude Code.</p></div>');
     if (needs.unconfirmed.length) out.push("<h2>Clicked, and no confirmation seen</h2>");
-    for (const u of needs.unconfirmed) out.push('<div class="item"><h4>' + esc(u.company) + '</h4><p class="note"><a href="' + esc(u.link) + '" target="_blank" rel="noopener">' + esc(u.title) + '</a></p><p>Look for a confirmation email from them. It is never sent again until you say which it was.</p><button class="btn" data-set="' + esc(u.id) + '" data-to="applied">I got a confirmation</button><button class="btn quiet" data-set="' + esc(u.id) + '" data-to="queued">It was not sent. Try again</button></div>');
+    for (const u of needs.unconfirmed) out.push('<div class="item"><h4>' + esc(u.company) + '</h4><p class="note"><a href="' + esc(u.link) + '" target="_blank" rel="noopener">' + esc(u.title) + '</a></p><p>Look for a confirmation email from them. It is never sent again until you say which it was.</p><span class="saved" id="saved-' + esc(u.id) + '"></span><button class="btn" data-set="' + esc(u.id) + '" data-to="applied">I got a confirmation</button><button class="btn quiet" data-set="' + esc(u.id) + '" data-to="queued">It was not sent. Try again</button></div>');
     if (needs.mail.length) out.push("<h2>Emails the tool could not place</h2>");
     for (const m of needs.mail) out.push('<div class="item" data-mail="' + esc(m.id) + '"><h4>' + esc(m.subject) + '</h4><p class="note">From ' + esc(m.from) + ", " + esc(m.on) + ". " + esc(m.why) + "</p>" +
       '<div class="grid2"><div><label>Which application</label><select data-mjob>' + '<option value="">Choose</option>' + m.jobs.map((j) => '<option value="' + esc(j.id) + '">' + esc(j.company) + " | " + esc(j.title) + "</option>").join("") + "</select></div>" +
@@ -126,11 +126,13 @@ ${embedded}
       '<p><label><input type="checkbox" id="autoOn"' + (sch.on ? " checked" : "") + (auto.policy ? "" : " disabled") + '> Run every day at </label> <input type="time" id="autoAt" value="' + esc(sch.at) + '" style="width:auto"> <span class="note">' + esc(auto.timezone) + "</span></p>" +
       (sch.on && sch.next ? "<p>Next run: <b>" + esc(new Date(sch.next).toLocaleString()) + "</b></p>" : '<p class="note">' + (auto.policy ? "Off. Nothing runs by itself." : "Save your daily rules below first.") + "</p>") +
       '<p class="note">Your Mac has to be on and you signed in at that time. The tool\u2019s Chrome window opens while it works.</p>' +
-      (sch.on ? '<button class="btn quiet" id="autoPause">Pause</button>' : "") + '<span class="saved" id="saved-auto"></span></div>' +
+      (sch.on ? '<button class="btn quiet" id="autoPause">Pause future runs</button>' : "") +
+      (auto.running ? (auto.stopAsked ? '<p class="warn">A run is working now and was asked to stop. It finishes the application it is on.</p>' : '<p>A run is working now. <button class="btn quiet" id="autoStop">Stop it after this application</button></p>') : "") +
+      (sch.on ? '<p class="note">Pausing removes the schedule. It does not stop a run that is already working.</p>' : "") + '<span class="saved" id="saved-auto"></span></div>' +
       '<div class="item"><h4>Your daily rules</h4>' + (auto.policyError ? '<p class="warn">' + esc(auto.policyError) + "</p>" : "") +
       '<div class="grid2">' +
       '<div><label>Applications a day (at most ' + L.maxTarget + ')</label><input type="number" id="pTarget" min="1" max="' + L.maxTarget + '" value="' + esc(p.target) + '"></div>' +
-      '<div><label>Most JEV may cost in a day, in dollars</label><input type="number" id="pBudget" min="0" step="0.05" value="' + esc(p.jevBudgetUsd) + '"></div>' +
+      '<div><label>Most JEV may cost in a day, in dollars (JEV only: Claude is on your subscription or your own key, and is not counted)</label><input type="number" id="pBudget" min="0" step="0.05" value="' + esc(p.jevBudgetUsd) + '"></div>' +
       '<div><label>Lowest fit score, 0 to 1</label><input type="number" id="pScore" min="0" max="1" step="0.05" value="' + esc(p.minScore) + '"></div>' +
       '<div><label>Where: vancouver, canada, remote, us, international (empty: anywhere)</label><input type="text" id="pWhere" value="' + esc(list(p.where)) + '"></div>' +
       '<div><label>Kinds: internship, new_grad (empty: both)</label><input type="text" id="pLevels" value="' + esc(list(p.levels)) + '"></div>' +
@@ -138,6 +140,7 @@ ${embedded}
       '<div><label>Employers never to apply to</label><input type="text" id="pExclude" value="' + esc(list(p.excludeEmployers)) + '"></div>' +
       '<div><label>Documents</label><label><input type="checkbox" id="pTailor"' + (p.documents.tailor ? " checked" : "") + '> A resume written for each job</label><label><input type="checkbox" id="pCover"' + (p.documents.cover ? " checked" : "") + "> A cover letter where a form has a box for one</label></div>" +
       '</div><button class="btn" id="pSave">Save rules</button><span class="saved" id="saved-policy"></span>' +
+      '<p class="note">A run reads these rules when it starts. A change you save while one is working applies from the next run.</p>' +
       '<p class="note">Fixed limits, the same for everyone: at most ' + L.perBoard + " a day to one job board, " + L.perEmployerPerDay + " a day to one employer, " + L.gapMinutes[0] + " to " + L.gapMinutes[1] + " minutes between two applications to one board, and a run of at most " + L.maxMinutes + " minutes. A board that asks whether a person is there is left alone until tomorrow.</p></div>" +
       '<div class="item"><h4>Today</h4>' + (last ? '<p class="line">' + esc(last.sent.length + " submitted. " + (last.waiting.length + last.unconfirmed.length) + " need you. " + last.leftForYou.length + " could not be sent.") + '</p><p class="note">Stopped because ' + esc(last.stoppedBecause) + ". JEV today: $" + Number(last.jevUsd).toFixed(4) + "</p>" : '<p class="note">No daily run yet today.</p>') + "</div>";
   }
@@ -174,7 +177,7 @@ ${embedded}
       // A status the page does not offer (a run's own, or one waiting on you) is shown as it is, never as "queued".
       const current = r.status_key;
       const other = STATUSES.includes(current) ? "" : '<option value="" selected disabled>' + esc(r.status.replace(/:.*$/, "")) + "</option>";
-      const pick = live ? '<select data-id="' + esc(r.job_id) + '">' + other + STATUSES.map((s) => '<option value="' + s + '"' + (s === current ? " selected" : "") + ">" + s.replace("_", " ") + "</option>").join("") + "</select>" : "";
+      const pick = live ? '<select data-id="' + esc(r.job_id) + '" data-was="' + esc(current) + '">' + other + STATUSES.map((s) => '<option value="' + s + '"' + (s === current ? " selected" : "") + ">" + s.replace("_", " ") + "</option>").join("") + "</select>" : "";
       return "<tr>" +
         '<td class="n">' + esc(r.applied_on) + "</td>" +
         "<td>" + esc(r.company) + "</td>" +
@@ -196,7 +199,7 @@ ${embedded}
     const b = t.closest("[data-tab]"); if (b) { tab = b.dataset.tab; render(); return; }
     const th = t.closest("[data-sort]"); if (th) { if (sortKey === th.dataset.sort) sortDir = -sortDir; else { sortKey = th.dataset.sort; sortDir = 1; } render(); return; }
     const show = t.closest("[data-show]"); if (show) { const r = await post("/api/show", { id: show.dataset.show }); const ok = r.ok && (await r.json()).ok; show.textContent = ok ? "It is in front now" : "Its window is closed"; return; }
-    const set = t.closest("[data-set]"); if (set) { await act("/api/status", { id: set.dataset.set, status: set.dataset.to }); return; }
+    const set = t.closest("[data-set]"); if (set) { await act("/api/status", { id: set.dataset.set, status: set.dataset.to, was: "submission_unknown" }); return; }
     const ans = t.closest("[data-answer]");
     if (ans) {
       const box = ans.closest("[data-job]");
@@ -210,9 +213,10 @@ ${embedded}
     const mno = t.closest("[data-mail-no]"); if (mno) { await act("/api/mail", { id: mno.dataset.mailNo }); return; }
     if (t.id === "pSave") { await act("/api/policy", { target: Number($("#pTarget").value), jevBudgetUsd: Number($("#pBudget").value), minScore: Number($("#pScore").value), where: words("pWhere"), levels: words("pLevels"), boards: words("pBoards"), excludeEmployers: words("pExclude"), documents: { tailor: $("#pTailor").checked, cover: $("#pCover").checked } }, "saved-policy"); return; }
     if (t.id === "autoPause") { await act("/api/schedule", { on: false }, "saved-auto"); return; }
+    if (t.id === "autoStop") { await act("/api/stop", {}, "saved-auto"); return; }
   });
   document.addEventListener("change", (e) => { if (e.target.id === "autoOn" || (e.target.id === "autoAt" && $("#autoOn").checked)) act("/api/schedule", { on: $("#autoOn").checked, at: $("#autoAt").value }, "saved-auto"); });
-  document.addEventListener("change", (e) => { const s = e.target.closest("select[data-id]"); if (s) save(s.dataset.id, { status: s.value }); const n = e.target.closest("textarea[data-notes]"); if (n) save(n.dataset.notes, { notes: n.value }); });
+  document.addEventListener("change", (e) => { const s = e.target.closest("select[data-id]"); if (s) save(s.dataset.id, { status: s.value, was: s.dataset.was }); const n = e.target.closest("textarea[data-notes]"); if (n) save(n.dataset.notes, { notes: n.value }); });
   $("#q").addEventListener("input", (e) => { q = e.target.value; render(); });
   async function load() {
     data = live ? await (await fetch("/api/data")).json() : JSON.parse(embedded.textContent);

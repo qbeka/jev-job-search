@@ -8,6 +8,21 @@ finds jobs, then fills and sends one application at a time, and writes you
 a summary. It is **off until you turn it on**. Nothing is scheduled, and
 `daily` itself does nothing, until you have written your standing policy.
 
+In Claude Code it is one skill with short commands. Nothing here needs a
+terminal.
+
+| Type | What happens |
+|---|---|
+| `/daily` | Says what is set up and how today went |
+| `/daily setup` | Asks you the questions below and writes your policy after a yes |
+| `/daily dry` | Rehearses three jobs: fills and checks, sends nothing |
+| `/daily run` | Runs today's applications |
+| `/daily schedule 09:00` | Makes it run by itself every day at that time |
+| `/daily pause` | Removes the schedule, so no further run starts by itself. A run that is working carries on |
+| `/daily stop` | Asks the run that is working now to stop. It finishes the application it is on and opens no other |
+
+The same switches are on the dashboard's Automation screen (`/report`).
+
 ## 1. Write your standing policy
 
 The `/daily` skill asks you the questions and writes the file. By hand:
@@ -25,9 +40,11 @@ cp data/policy.example.json data/policy.json
 | `boards` | Job boards by name: `greenhouse`, `lever`, `ashby`, `workday` and so on | every board the tool fills |
 | `excludeEmployers` | Employers the daily run never applies to. A name matches any company that contains it | none |
 | `documents` | `tailor`: a resume written for each job. `cover`: a cover letter where a form has a box for one | your profile's own resume |
-| `jevBudgetUsd` | The most JEV may cost in a day. The run stops there | 0.50 |
+| `jevBudgetUsd` | The most **JEV** may cost in a day. The run stops there. Claude is not counted: it runs on your subscription, or on your own API key, which this number does not limit | 0.50 |
 
 Every job is checked against this file in code before its form is opened.
+A run reads the file once, when it starts. A change you make while a run
+is working applies from the next run.
 There is no pay filter: postings rarely state pay in a way the tool can
 read, and it will not guess.
 
@@ -134,7 +151,19 @@ scheduled task in the Claude desktop app with a prompt such as "Run
 Use one or the other, not both: two runs in one day share the same daily
 number, but there is no reason to run twice.
 
-## Turn it off
+## Pause it, stop it, turn it off
 
-`npx jev schedule remove` stops the schedule. Deleting `data/policy.json`
+These are three different things.
+
+- **Pause future runs**: `/daily pause`, the dashboard's "Pause future
+  runs", or `npx jev schedule remove`. No further run starts by itself. A
+  run that is already working is not touched.
+- **Stop the run that is working**: `/daily stop`, the dashboard's "Stop
+  it after this application", or `npx jev daily --stop`. The run finishes
+  the application it is on, so no form is left half sent, opens no other,
+  and writes its summary.
+- **Turn it off for good**: remove the schedule and delete
+  `data/policy.json`.
+
+`npx jev schedule remove` removes the schedule. Deleting `data/policy.json`
 makes `daily` refuse to run at all.

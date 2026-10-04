@@ -1,7 +1,7 @@
 ---
 name: daily
 description: The daily run, which sends a few applications a day with nobody watching, inside the user's standing policy. Use when the user says /daily, with or without a subcommand (setup, dry, run, schedule, stop), "run it every day", "automate this", "schedule it", or asks about the daily limits or data/policy.json.
-argument-hint: "[setup | dry [n] | run | schedule [HH:MM] | stop]"
+argument-hint: "[setup | dry [n] | run | schedule [HH:MM] | pause | stop]"
 model: claude-sonnet-5-5
 effort: medium
 ---
@@ -20,8 +20,9 @@ is off until the user turns it on.
 | `/daily setup` | The questions below, then write `data/policy.json` after a yes. |
 | `/daily dry` or `/daily dry 3` | `npx jev daily --dry --target <n>` (3 when no number). Read the summary with them. |
 | `/daily run` | `npx jev daily`. They typed it, so that is their go for today's run. Read the summary back when it ends. |
-| `/daily schedule` or `/daily schedule 08:30` | `npx jev schedule install --at <time>` (09:00 when no time). Say: the Mac must be on and signed in at that time, the tool's Chrome window will open, and `/daily stop` ends it. |
-| `/daily stop` | `npx jev schedule remove`. |
+| `/daily schedule` or `/daily schedule 08:30` | `npx jev schedule install --at <time>` (09:00 when no time). Say: the Mac must be on and signed in at that time, the tool's Chrome window will open, `/daily pause` removes it again, and `/daily stop` stops a run that is working. |
+| `/daily pause` | `npx jev schedule remove`. No further run starts by itself. Say that a run already working carries on. |
+| `/daily stop` | `npx jev daily --stop`. The run that is working finishes the application it is on and opens no other. Say that this does not remove the schedule; `/daily pause` does. |
 
 If `npx jev accounts` shows Workday is allowed, a daily run signs in at
 employers. Then you do not start `dry` or `run` yourself: show the command
@@ -42,7 +43,8 @@ question at a time:
 - A resume written for each job, and a cover letter where a form has a
   box for one? This takes longer per job.
 - How much may JEV cost in a day? 50 cents is the default; a normal day
-  is a few cents.
+  is a few cents. Say that this limits JEV only: Claude is on their
+  subscription, or on their own API key, and is not counted.
 
 Write `data/policy.json` in the shape of `data/policy.example.json`, show
 it to them, and save it only after a yes. Then offer `/daily dry`.

@@ -61,5 +61,7 @@ export const StatusChange = z.object({
   status: QueueStatus.refine((s) => (REPORT.statuses as readonly string[]).includes(s), "not a status the page offers").optional(),
   reason: z.string().max(500).optional(),
   notes: z.string().max(2000).optional(),
+  /** The status the page was showing when the person chose. A change is refused when the job has moved on since. */
+  was: z.string().max(40).optional(),
 });
 export type StatusChange = z.infer<typeof StatusChange>;

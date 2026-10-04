@@ -21,8 +21,9 @@ press Ctrl-C. The page has four screens:
   totals, and three small charts.
 - **Needs you.** Everything only they can do, each with its button:
   - a question a form asked that their profile could not answer. They
-    type or pick the answer and press "Save answer and continue"; the job
-    goes back in the queue. "Remember for future applications" keeps the
+    type or pick the answer and press "Save for next run". Nothing is
+    sent then: the job goes back in the queue and the next `/apply` or
+    daily run fills it with that answer. "Remember for future applications" keeps the
     answer as a standing answer. A question about the right to work has no
     box: that answer is one per country and lives in the profile
     (`/profile`).
@@ -36,8 +37,9 @@ press Ctrl-C. The page has four screens:
 - **Applications.** Every job, with tabs, a filter, a status select, a
   notes box, and the reply that came back.
 - **Automation.** The daily run: an "Apply automatically" switch with a
-  time, the next run, a Pause button, their daily rules as a form, and
-  today's result in one line. Turning the switch on installs the schedule;
+  time, the next run, "Pause future runs" (removes the schedule),
+  "Stop it after this application" while a run is working, their daily
+  rules as a form, and today's result in one line. Turning the switch on installs the schedule;
   that is their click, not yours.
 
 `npx jev report --static applications/report.html` writes a snapshot page
