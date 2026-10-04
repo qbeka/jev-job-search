@@ -11,6 +11,8 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-04
+
 ### Added
 - `fieldAlso` in a profile's education entry: other names the same field
   of study goes by. A list that has no "Computing Science" is offered
