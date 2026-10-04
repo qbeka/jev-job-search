@@ -4,7 +4,9 @@ Read `README.md` first, then `docs/ARCHITECTURE.md`. The CLI is the product:
 `discover` builds the queue, `apply` fills, resolves, verifies and submits.
 `src/run/pipeline.ts` is the loop itself. The skills in `.claude/skills/`
 run it with a person in the loop: `/setup`, `/discover`, `/apply`,
-`/accounts`, `/daily`, `/profile`.
+`/accounts`, `/daily`, `/resume`, `/status`, `/profile`. A person using
+the tool types those and never `npx`: when you add a command, add the
+slash form to a skill and lead the docs with it.
 
 If `data/profile.json` does not exist, the person in front of you has not
 set the tool up. Offer `/setup` before anything else. `npx jev
@@ -51,10 +53,12 @@ doctor` says what is in place and what to do next.
   is blocked as before: the job goes on the by-hand list and the site is
   noted. The tool solves no CAPTCHAs.
 - **You never touch a credential.** When you work in this repo you never
-  ask for, read, type or repeat a password, a code or a token, never read
-  the Keychain, and never run a sign-in, a sign-up or `gmail connect`
-  against a real service, which includes `apply` on a Workday job. Those
-  are the person's to run. You build and test against the scripted pages
+  ask for, read, type or repeat a password, a code or a token, and never
+  read the Keychain. The password is typed by the person into a window of
+  their own Mac (`src/accounts/ask.ts`). You never start a run that signs
+  in or signs up at an employer, which includes `apply` on a Workday job
+  with or without `--dry`: show the command in a `bash` block and let the
+  person click Run. You build and test against the scripted pages
   in `tests/helpers/` with made-up credentials.
 - **Secrets live in the Keychain and travel as `Secret`.** Passwords and
   the Gmail tokens are in the macOS Keychain (`src/accounts/secrets.ts`),
@@ -116,8 +120,9 @@ doctor` says what is in place and what to do next.
   minutes between two submissions to one board, a board left alone until
   tomorrow after a human check, the run stopped at the second. Never raise
   them to send more. Nothing is scheduled until the person runs
-  `schedule install`. You never run `daily` without `--dry` and never
-  install the schedule: those are the person's.
+  `schedule install`. You run `daily` without `--dry`, or install the
+  schedule, only when the person typed that command (`/daily run`,
+  `/daily schedule`) in the conversation.
 - **Pace every site.** Job boards drop or refuse bursts. Concurrency and
   gaps per host are in `RUN`; do not remove them to go faster.
 - **The tool learns by keeping notes, and reads them before it acts.** Site

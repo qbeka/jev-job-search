@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ensureSignedIn, type AuthContext } from "../src/accounts/auth.js";
+import { askPassword } from "../src/accounts/ask.js";
 import { accountGate, adapterFor, capabilityFor } from "../src/accounts/capability.js";
 import { addEmployer, clearPauses, describeAccounts, removeAccounts, setRule } from "../src/accounts/commands.js";
 import { AccountsFile, dayOf, loadAccounts, loadState, mutateState, stateOf } from "../src/accounts/config.js";
@@ -541,6 +542,29 @@ describe("the accounts file and the secret store", () => {
     expect(new EnvStore().get("test-item")?.reveal()).toBe("made-up-value");
     delete process.env.JEV_TEST_ITEM;
     expect(new EnvStore().get("test-item")).toBeNull();
+  });
+
+  it("asks for the password in a window, twice, and stores nothing that misses a rule", () => {
+    const script = (answers: (string | null)[]) => {
+      const shown: string[] = [];
+      return { shown, dialog: (message: string) => (shown.push(message), answers.shift() ?? null) };
+    };
+    const good = script([PASSWORD, PASSWORD]);
+    const ok = askPassword(good.dialog);
+    expect(ok.ok && ok.password.reveal()).toBe(PASSWORD);
+    expect(JSON.stringify(ok)).not.toContain(PASSWORD);
+    // No window ever shows what was typed.
+    expect(good.shown.join(" ")).not.toContain(PASSWORD);
+    expect(askPassword(script([null]).dialog)).toEqual({ ok: false, why: "cancelled" });
+    expect(askPassword(script([PASSWORD, null]).dialog)).toEqual({ ok: false, why: "cancelled" });
+    // A weak one is asked for again with the rule named, then a good one is taken.
+    const retry = script(["weakpass", PASSWORD, PASSWORD]);
+    expect(askPassword(retry.dialog).ok).toBe(true);
+    expect(retry.shown[1]).toMatch(/That one needs a digit, an upper-case letter, a special character/);
+    expect(askPassword(script(["weakpass", "weakpass", "weakpass"]).dialog)).toMatchObject({ ok: false, why: "rules" });
+    const typo = script([PASSWORD, "Fake-Pass-124!", PASSWORD, "Fake-Pass-125!", PASSWORD, "x"]);
+    expect(askPassword(typo.dialog)).toEqual({ ok: false, why: "mismatch" });
+    expect(typo.shown[2]).toMatch(/did not match/);
   });
 
   it("gives the Keychain a value on standard input, never as an argument", () => {

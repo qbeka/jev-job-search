@@ -25,6 +25,7 @@ import { loadPolicy } from "./run/policy.js";
 import { installSchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
 import { addEmployer, clearPauses, describeAccounts, removeAccounts, setRule } from "./accounts/commands.js";
 import { defaultStore, passwordProblems } from "./accounts/secrets.js";
+import { askPassword } from "./accounts/ask.js";
 import { connect as connectGmail, disconnect as disconnectGmail, loadGmail } from "./mail/gmail.js";
 import { installRedaction } from "./util/redact.js";
 import { discover } from "./discover.js";
@@ -422,7 +423,8 @@ program
   .option("--verify-email", "the tool may read the verification email the board sends you (needs: npx jev gmail connect)")
   .option("--max-new <n>", "new employer accounts per day, at most", int)
   .option("--clear", "with status: lift every pause, after you fixed what was wrong")
-  .action((action: string | undefined, target: string | undefined, o: { email?: string; create?: boolean; terms?: boolean; verifyEmail?: boolean; maxNew?: number; clear?: boolean }) => {
+  .option("--terminal", "with password: ask in this terminal, not in a window")
+  .action((action: string | undefined, target: string | undefined, o: { email?: string; create?: boolean; terms?: boolean; verifyEmail?: boolean; maxNew?: number; clear?: boolean; terminal?: boolean }) => {
     const store = defaultStore();
     const consent = () => ({ email: o.email ?? loadProfile().email, create: !!o.create, terms: !!o.terms, verifyEmail: !!o.verifyEmail, ...(o.maxNew !== undefined ? { maxNew: o.maxNew } : {}) });
     if (!action || action === "list" || action === "status") {
@@ -431,13 +433,21 @@ program
     }
     if (action === "password") {
       if (process.platform !== "darwin") return console.log("This machine has no Keychain. Put the password in .env as JEV_ACCOUNTS_PASSWORD=...");
-      console.log("Type the one password your job-board accounts use. It goes straight into your Mac's Keychain: it is not shown, not saved in a file, and never sent to Claude or JEV.\nWorkday wants at least 8 characters with a digit, a lower-case letter, an upper-case letter and a special character.");
-      if (!store.setByPerson(ACCOUNTS.passwordItem)) return console.log("Nothing was stored.");
-      const stored = store.get(ACCOUNTS.passwordItem);
-      const problems = stored ? passwordProblems(stored) : ["to be readable from the Keychain"];
-      if (problems.length) return console.log(`Stored, but Workday will refuse it: it needs ${problems.join(", ")}. Run the command again with another password.`);
+      if (o.terminal) {
+        // For a Mac with no screen to show a window on: `security` asks in the terminal itself.
+        console.log("Type the one password your job-board accounts use. It is not shown.\nWorkday wants at least 8 characters with a digit, a lower-case letter, an upper-case letter and a special character.");
+        if (!store.setByPerson(ACCOUNTS.passwordItem)) return console.log("Nothing was stored.");
+        const stored = store.get(ACCOUNTS.passwordItem);
+        const problems = stored ? passwordProblems(stored) : ["to be readable from the Keychain"];
+        if (problems.length) return console.log(`Stored, but Workday will refuse it: it needs ${problems.join(", ")}. Run the command again with another password.`);
+      } else {
+        console.log("A window on your Mac is asking for the one password your job-board accounts use. Type it there, twice. It goes into your Keychain and is never shown here.");
+        const asked = askPassword();
+        if (!asked.ok) return console.log(asked.why === "cancelled" ? "Nothing was stored: the window was closed or left unanswered." : asked.why === "mismatch" ? "Nothing was stored: the two did not match. Run it again." : `Nothing was stored: the password needs ${(asked.problems ?? []).join(", ")}. Run it again.`);
+        store.set(ACCOUNTS.passwordItem, asked.password);
+      }
       clearPauses();
-      return console.log("Stored. To see what is set up: npx jev accounts");
+      return console.log("Stored in your Keychain. To see what is set up: /accounts, or npx jev accounts");
     }
     if (action === "add") {
       if (!target) return console.log("Say what to add: `accounts add workday` for every Workday employer, or `accounts add <link>` for one employer.");
@@ -591,7 +601,9 @@ program
       appliedToday: by("applied").filter((e) => e.appliedAt && new Date(e.appliedAt).toDateString() === today).length,
       queued: by("queued").length,
       inProgress: by("in_progress").length,
-      leftForYou: by("needs_review").length + by("blocked").length,
+      leftForYou: by("needs_review").length + by("blocked").length + by("login_required").length,
+      waiting: [...by("awaiting_user_action"), ...by("awaiting_email_verification")].map((e) => ({ id: e.job.id, company: e.job.company, title: e.job.title, todo: waitingWords(e.waitingFor ?? (e.status === "awaiting_email_verification" ? "email_link" : "unknown")), reason: e.statusReason })),
+      unconfirmed: by("submission_unknown").map((e) => ({ id: e.job.id, company: e.job.company, title: e.job.title })),
       failed: by("failed").length,
       skipped: by("skipped").length,
       topSkipReasons: Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 12),
@@ -600,6 +612,14 @@ program
     console.log(`Queue from ${summary.generatedAt}`);
     console.log(`applied ${summary.applied} (today ${summary.appliedToday}) | queued ${summary.queued} | in progress ${summary.inProgress} | left for you ${summary.leftForYou} | failed ${summary.failed} | skipped ${summary.skipped}`);
     for (const [r, n] of summary.topSkipReasons) console.log(`  ${String(n).padStart(4)}  ${r}`);
+    if (summary.waiting.length) {
+      console.log(`\nWaiting for you (${summary.waiting.length}), each open in the tool's Chrome window. Do it there, then: /resume, or npx jev resume`);
+      for (const w of summary.waiting) console.log(`  ${w.company} | ${w.title}: ${w.todo}${w.reason ? ` (${w.reason.slice(0, 140)})` : ""}  [${w.id}]`);
+    }
+    if (summary.unconfirmed.length) {
+      console.log(`\nClicked and not confirmed (${summary.unconfirmed.length}). To settle them: /resume, or npx jev reconcile`);
+      for (const u of summary.unconfirmed) console.log(`  ${u.company} | ${u.title}  [${u.id}]`);
+    }
     console.log(whereTheRecordIs());
   });
 

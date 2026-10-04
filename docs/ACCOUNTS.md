@@ -15,7 +15,7 @@ Everything here is off until you turn it on.
 
 ## What you allow, one thing at a time
 
-| You allow | With | Without it |
+| You allow | In a terminal that is | Without it |
 |---|---|---|
 | Signing in to accounts you have | `accounts add <link>` or `accounts add workday` | Workday jobs are skipped, as before |
 | Making an account where an employer has none for you | `--create` | The job goes on your by-hand list |
@@ -26,10 +26,21 @@ A marketing or newsletter box on a sign-up form is never ticked.
 
 ## Turn it on
 
-The `/accounts` skill asks you these questions and runs the commands. By
-hand it is three steps.
+In Claude Code it is three short commands. Each one asks or shows you
+what it needs; you never type a long command.
 
-**1. Say what the tool may do.** For every Workday employer:
+| Type | What happens |
+|---|---|
+| `/accounts` | Says what is set up and what the next step is |
+| `/accounts add workday` | Asks the questions in the table above, one at a time, and saves your answers |
+| `/accounts add <link>` | One employer you already have an account with |
+| `/accounts password` | Opens a window on your Mac. You type the one password there, twice |
+| `/accounts gmail` | Walks you through connecting Gmail, if you allowed the verification email |
+| `/accounts clear` | Lifts a pause, after you fixed what caused it |
+| `/accounts remove all` | Forgets every account and the rule |
+
+**1. Say what the tool may do**, with `/accounts add workday`. In a
+terminal the same is:
 
 ```bash
 npx jev accounts add workday --create --terms --verify-email
@@ -44,35 +55,30 @@ npx jev accounts add https://acme.wd5.myworkdayjobs.com/Careers
 The address used is the one in your profile. `--email` gives another.
 `--max-new 3` is the most new accounts in one day, and 3 is the default.
 
-**2. Set the password.** One password for all your job-board accounts,
-typed into your Mac's Keychain by you:
+**2. Set the password**, with `/accounts password`. One password for all
+your job-board accounts. A window opens on your Mac and you type it there,
+twice, hidden. In a terminal the same is:
 
 ```bash
 npx jev accounts password
 ```
 
-Your Mac asks for it twice and does not show it. The tool checks it against
-Workday's rules (8 or more characters, a digit, a lower-case letter, an
-upper-case letter, a special character) and tells you which rule it misses.
-It never prints the password, never writes it to a file, and never sends it
-to Claude or JEV. Do not paste it into a chat.
+The tool checks it against Workday's rules (8 or more characters, a digit,
+a lower-case letter, an upper-case letter, a special character) and asks
+again, naming the rule, if it misses one. It never prints the password,
+never writes it to a file, and never sends it to Claude or JEV: it goes
+from that window into your Keychain. Do not paste it into a chat. On a Mac
+with no screen, `npx jev accounts password --terminal` asks in the
+terminal.
 
 If you already have accounts with some employers under another password,
 the tool will find out on the first sign-in, stop, and leave that employer
 to you. It does not try twice.
 
-**3. Connect Gmail (optional).** Only if you used `--verify-email`. See
-[Connect Gmail](#connect-gmail) below.
+**3. Connect Gmail (optional)**, with `/accounts gmail`. Only if you
+allowed the verification email. See [Connect Gmail](#connect-gmail) below.
 
-Then look at what is set up, and find the jobs:
-
-```bash
-npx jev accounts
-```
-
-```bash
-npx jev discover
-```
+Then `/accounts` shows what is set up, and `/discover` finds the jobs.
 
 ## What happens on a Workday job
 
@@ -92,7 +98,9 @@ open the posting's application
 A rehearsal (`--dry`) sends no application, but the sign-in is real: if the
 employer has no account for you and you allowed making one, one is made.
 
-The first time, rehearse one job and read what it printed:
+The first time, rehearse one job and read what it printed. A run that
+signs in at an employer is always started by you: in Claude Code the
+command is shown with a Run button, and in a terminal you type it.
 
 ```bash
 npx jev apply <a Workday posting's link> --dry
@@ -110,7 +118,7 @@ notification, and moves on to the next job, when it meets:
 - a verification email it cannot use (see the rules below)
 - a page it does not recognise
 
-Finish it in the tool's window, then run:
+Finish it in the tool's window, then type `/resume`, or in a terminal:
 
 ```bash
 npx jev resume --submit

@@ -11,6 +11,17 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added (short commands)
+- Every action has a slash command, so nobody has to type `npx`:
+  `/accounts`, `/accounts add workday`, `/accounts password`,
+  `/accounts gmail`, `/accounts clear`; `/daily`, `/daily setup`,
+  `/daily dry`, `/daily run`, `/daily schedule 09:00`, `/daily stop`; and
+  two new skills, `/resume` and `/status`.
+- `accounts password` asks in a window on your Mac, so it works from a
+  skill. `--terminal` keeps the old prompt for a Mac with no screen.
+- `status` lists the forms that wait for you and the ones clicked and not
+  confirmed.
+
 ### Added (the daily run)
 - `daily`: the day's applications with nobody watching. It searches, then
   fills and sends one job at a time inside your standing policy

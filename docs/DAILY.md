@@ -85,7 +85,8 @@ They live in `DAILY` in `src/config.ts`.
 
 The daily run passes no human check and finishes no sign-in that needs
 you. Such a form stays open in the tool's window, you get a notification,
-and the run goes on with another board. When you are back:
+and the run goes on with another board. When you are back, type
+`/resume`, or in a terminal:
 
 ```bash
 npx jev resume --submit
@@ -96,7 +97,8 @@ than 12 hours are closed and put on your by-hand list.
 
 ## Schedule it
 
-Nothing runs by itself until you install the schedule:
+Nothing runs by itself until you install the schedule, with
+`/daily schedule 09:00` or in a terminal:
 
 ```bash
 npx jev schedule install --at 09:00

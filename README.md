@@ -93,21 +93,34 @@ A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like
 
 ## Other commands
 
-`/setup`, `/discover` and `/apply` are the workflow. Eight more skills and a handful of terminal commands extend it once your profile is in place:
+`/setup`, `/discover` and `/apply` are the workflow. Ten more skills extend it once your profile is in place. Each is typed in Claude Code as written; none needs a terminal:
 
 - **`/tailor <job id> [--cover]`** writes a one-page resume for the job from your profile and the posting, and with `--cover` a one-page cover letter, and shows you the PDFs. Every number and every name of a tool, a place or a company in the draft is checked against your profile in code; the keywords the posting wants and your profile cannot support are listed, never stuffed in. `/apply --tailor --cover` writes and attaches them as it applies. See [A resume and a cover letter written for the job](#a-resume-and-a-cover-letter-written-for-the-job).
 - **`/report`** opens a dashboard on your own machine: applications sent, today, waiting for you, left for you; sent per day and per board; every job with its status, which you can change by hand, and a notes box per row. `npx jev report --static applications/report.html` writes a snapshot page to keep. Nothing leaves your machine.
 - **`/expand`** reads the public places your profile already links to (your GitHub repositories, your portfolio site) and proposes projects, skills and facts that are missing from the profile, each with its source. Nothing is added without your yes.
 - **`/add-source`** adds a job board or a public list as a source: it inspects the site, writes the source in the shape of the shipped ones, tests it on a captured sample and runs one live query before registering it.
-- **`/accounts`** lets the tool apply on Workday, where every employer wants its own account. You say what it may do, one thing at a time: sign in to accounts you have, make one where there is none, tick the account terms, read the verification email. Your password goes into your Mac's Keychain, typed by you. Off until you turn it on. See [Jobs that want an account](#jobs-that-want-an-account).
-- **`/daily`** sets up the daily run: a few applications a day with nobody watching, inside a standing policy you write (how many, where, which employers never) and limits meant to look like one careful person: 15 a day, one per employer, minutes between two applications to one board, a full stop when boards start asking for a human check. `npx jev schedule install --at 09:00` makes it run by itself; nothing is scheduled until you do. See [docs/DAILY.md](docs/DAILY.md).
+- **`/accounts`** lets the tool apply on Workday, where every employer wants its own account. `/accounts add workday` asks what it may do, one thing at a time: sign in to accounts you have, make one where there is none, tick the account terms, read the verification email. `/accounts password` opens a window on your Mac where you type the one password; it goes into your Keychain. Off until you turn it on. See [Jobs that want an account](#jobs-that-want-an-account).
+- **`/daily`** is the daily run: a few applications a day with nobody watching, inside a standing policy you write (how many, where, which employers never) and limits meant to look like one careful person: 15 a day, one per employer, minutes between two applications to one board, a full stop when boards start asking for a human check. `/daily dry` rehearses it, `/daily run` runs today's, and `/daily schedule 09:00` makes it run by itself; nothing is scheduled until you type that. See [docs/DAILY.md](docs/DAILY.md).
+- **`/resume`** picks up the forms that wait for you. A board that emails a code, shows a robot check or needs a sign-in only you can finish leaves its form open in the tool's window; you do that one thing there, type `/resume`, and the application is recorded. It also settles a form whose Submit was clicked with no confirmation seen, which is never sent twice.
+- **`/status`** says where you stand in a few lines: sent today and in total, what waits for you, what is left for you and why, how fresh the queue is, what it has cost, and the next step.
 - **`/profile`** changes your profile, your standing answers (how recurring questions are answered), your drafts and your voice guide with you. When a form answer looked wrong, this is where you fix it, once.
-- **`resume`** watches the forms left open for you (an emailed code, a robot check, a sign-in) while you finish them, and records each application when its confirmation shows. **`reconcile`** settles a form whose Submit was clicked with no confirmation seen: it reads the tab again and records it as applied or as not sent. Such a form is never sent twice.
-- **`log`**, **`status`** and **`cost`** show your applications (`log --manual` lists what the tool left for you), the totals and skip reasons, and what you have spent. `npx jev log --open` opens your applications in your spreadsheet program.
-- **`doctor`** checks everything a run needs and names the next step. `/setup` runs it for you.
-- **`knowledge --share`** copies what your runs learned about job sites into the repo, so a pull request can hand it to everyone. It holds site names and kinds of controls, nothing about you.
 
-Every terminal command is `npx jev <command>` from the project folder; `npx jev --help` lists them all, including the apply loop one step at a time (`fill`, `resolve`, `submit`, `check`, `inspect`, `set`).
+#### In a terminal
+
+Every skill runs a command you can also type yourself, as `npx jev <command>` from the project folder. You never have to; scripts and schedulers do.
+
+| Skill | The same in a terminal |
+|---|---|
+| `/discover` | `npx jev discover` |
+| `/apply`, `/apply <link>` | `npx jev apply --count 10 --submit`, `npx jev apply <link> --submit` |
+| `/tailor <job id>` | `npx jev tailor <job id> --cover` |
+| `/report` | `npx jev report --open` |
+| `/accounts`, `/accounts add workday`, `/accounts password` | `npx jev accounts`, `npx jev accounts add workday --create --terms --verify-email`, `npx jev accounts password` |
+| `/daily dry`, `/daily run`, `/daily schedule 09:00`, `/daily stop` | `npx jev daily --dry`, `npx jev daily`, `npx jev schedule install --at 09:00`, `npx jev schedule remove` |
+| `/resume` | `npx jev resume`, `npx jev reconcile` |
+| `/status` | `npx jev status`, `npx jev doctor`, `npx jev cost`, `npx jev log` |
+
+`npx jev log --open` opens your applications in your spreadsheet program, `npx jev knowledge --share` copies what your runs learned about job sites into the repo for a pull request (site names and kinds of controls, nothing about you), and `npx jev --help` lists everything, including the apply loop one step at a time (`fill`, `resolve`, `submit`, `check`, `inspect`, `set`).
 
 ## File structure
 
@@ -124,6 +137,8 @@ jev-job-search/
 │   ├── add-source/            # /add-source: a new job board or list
 │   ├── accounts/              # /accounts: boards that want an account (Workday)
 │   ├── daily/                 # /daily: the daily run and its schedule
+│   ├── resume/                # /resume: pick up the forms that wait for you
+│   ├── status/                # /status: where you stand, in a few lines
 │   └── profile/               # /profile: change what the tool knows about you
 ├── applications/              # Your records (git-ignored)
 │   ├── applied.csv            #   what was sent, newest first
@@ -233,19 +248,16 @@ Jobs come from public lists on GitHub (the SimplifyJobs internship and new-grad 
 
 ### Jobs that want an account
 
-Every employer on Workday keeps its own accounts, and that is a large share of all postings. `/accounts` turns this on, and each part is a separate yes:
+Every employer on Workday keeps its own accounts, and that is a large share of all postings. Two commands turn this on:
 
-```bash
-npx jev accounts add workday --create --terms --verify-email
+```
+/accounts add workday
+/accounts password
 ```
 
-```bash
-npx jev accounts password
-```
+The first asks what the tool may do, and each part is a separate yes: sign in on Workday, make an account where an employer has none for you (at most 3 new a day), tick the account terms box, read the verification email. Say no to one and that part stays yours. The second opens a window on your Mac where you type the one password your job-board accounts use, twice. It goes into the Keychain and is never shown, saved in a file, or sent to Claude or JEV.
 
-The first says the tool may sign in on Workday, make an account where an employer has none for you (at most 3 new a day), tick the account terms box, and read the verification email. Leave a flag out and that part stays yours. The second has your Mac ask you for the one password your job-board accounts use; it goes into the Keychain and is never shown, saved in a file, or sent to Claude or JEV.
-
-A wrong password is never tried twice: that account is left alone until you sign in yourself. A robot check, a phone code, a passkey and single sign-on stop the job with the page left open for you; `npx jev resume --submit` carries on once you are through. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
+A wrong password is never tried twice: that account is left alone until you sign in yourself. A robot check, a phone code, a passkey and single sign-on stop the job with the page left open for you; `/resume` carries on once you are through. A run that signs in at an employer is always started by you: Claude shows the command with a Run button and does not press it for you. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
 
 ### Which jobs it keeps
 
