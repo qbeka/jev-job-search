@@ -11,6 +11,8 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-04
+
 ### Added
 - A Workday application goes through every page to a confirmed
   submission: tried on one employer's six-step form (information,
