@@ -18,7 +18,8 @@ const isSafeOrigin = (value: string): boolean => {
   }
 };
 
-export const Mode = z.enum(["existing_only", "create_if_missing"]);
+/** off: the person said the tool must leave this employer alone, whatever the rule for the board says. */
+export const Mode = z.enum(["existing_only", "create_if_missing", "off"]);
 
 /** Where an account's password is: an item in the secret store (the Keychain on a Mac), or an environment variable the person names. */
 const SecretRef = z.union([z.object({ keychain: z.string() }), z.object({ passwordEnv: z.string() })]);
@@ -45,7 +46,7 @@ export type Account = z.infer<typeof Account>;
 /** The person's standing rule for one provider: any employer on it may get an account on these terms. */
 const ProviderRule = z.object({
   email: z.string().email(),
-  mode: Mode,
+  mode: z.enum(["existing_only", "create_if_missing"]),
   emailVerification: z.boolean().default(false),
   agreements: z.array(z.string()).default([]),
   maxNewAccountsPerDay: z.number().int().min(0).default(ACCOUNTS.maxNewAccountsPerDay),
@@ -55,6 +56,8 @@ export type ProviderRule = z.infer<typeof ProviderRule>;
 
 export const AccountsFile = z.object({
   version: z.literal(1).default(1),
+  /** False when the person switched the sign-ins off. What is set up stays, and nothing signs in. */
+  enabled: z.boolean().default(true),
   providers: z.object({ workday: ProviderRule.optional() }).default({}),
   accounts: z.array(Account).default([]),
 });

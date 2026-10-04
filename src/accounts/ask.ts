@@ -33,15 +33,18 @@ export type Asked = { ok: true; password: Secret } | { ok: false; why: "cancelle
  * Asks for the password and its repeat, and checks it against the board's rules before anything
  * is stored. A password that misses a rule is asked for again, with the rule named, a few times.
  */
-export function askPassword(dialog: Dialog = macDialog): Asked {
-  const rules = "Workday wants 8 or more characters with a digit, a lower-case letter, an upper-case letter and a special character.";
+export function askPassword(dialog: Dialog = macDialog, o: { what?: string; existing?: boolean } = {}): Asked {
+  // A password that already works at an employer is taken as it is. Only what the Keychain cannot hand back as typed is refused.
+  const check = (p: Secret) => passwordProblems(p).filter((x) => !o.existing || /plain keyboard/.test(x));
+  const rules = o.existing ? "Type it exactly as you use it there." : "Workday wants 8 or more characters with a digit, a lower-case letter, an upper-case letter and a special character.";
+  const what = o.what ?? "The one password for your job-board accounts.";
   let note = "";
   let last: Asked = { ok: false, why: "cancelled" };
   for (let round = 0; round < ACCOUNTS.askRounds; round++) {
-    const first = dialog(`${note}The one password for your job-board accounts.\n\nIt goes into your Mac's Keychain. It is not shown, not saved in a file, and never sent to Claude or JEV.\n\n${rules}`);
+    const first = dialog(`${note}${what}\n\nIt goes into your Mac's Keychain. It is not shown, not saved in a file, and never sent to Claude or JEV.\n\n${rules}`);
     if (first === null) return { ok: false, why: "cancelled" };
     const password = new Secret(first);
-    const problems = passwordProblems(password);
+    const problems = check(password);
     if (problems.length) {
       note = `That one needs ${problems.join(", ")}.\n\n`;
       last = { ok: false, why: "rules", problems };

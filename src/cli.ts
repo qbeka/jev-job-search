@@ -13,7 +13,7 @@ import { loadMemory, prune, saveMemory } from "./answers/memory.js";
 import { inspect, setValues } from "./browser/formRunner.js";
 import { loadReport, type Fill, type FillReport } from "./browser/report.js";
 import { closeJobTab, loadSession } from "./browser/session.js";
-import { clearBrowsingData, ensureBrowser } from "./browser/cdp.js";
+import { clearBrowsingData, closeTab, ensureBrowser, listTargets, newTab, Page, sleep } from "./browser/cdp.js";
 import { acquireRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
@@ -23,8 +23,13 @@ import { accountGate } from "./accounts/capability.js";
 import { dailyRun, formatDaily, localDay, saveDaily, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
 import { installSchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
-import { addEmployer, clearPauses, describeAccounts, removeAccounts, setRule } from "./accounts/commands.js";
-import { defaultStore, passwordProblems } from "./accounts/secrets.js";
+import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule } from "./accounts/commands.js";
+import { adapterFor } from "./accounts/capability.js";
+import { signedInNow, signInFor } from "./accounts/gate.js";
+import { workdayParts } from "./sources/ats/workday.js";
+import { applyUrlFor } from "./jobs/normalize.js";
+import { goto } from "./browser/session.js";
+import { defaultStore, itemFor } from "./accounts/secrets.js";
 import { askPassword } from "./accounts/ask.js";
 import { connect as connectGmail, disconnect as disconnectGmail, loadGmail } from "./mail/gmail.js";
 import { installRedaction } from "./util/redact.js";
@@ -414,58 +419,140 @@ program
 
 // ------------------------------------------------------ forms left for you
 
+/** The address that opens an application at an employer: a posting's own link, or a job of theirs from the queue. */
+function applicationFor(target: string): string {
+  const found = adapterFor(target);
+  if (found && workdayParts(target)) return found.adapter.applicationUrl(target);
+  const tenant = found?.tenant.tenant ?? accountsNamed(target)[0]?.tenant ?? target.toLowerCase();
+  const job = loadQueue().entries.find((e) => adapterFor(e.job.url)?.tenant.tenant === tenant);
+  if (!job) throw new Error(`no job at "${target}" is in your queue, so there is no page to sign in on. Give the link of one of their postings.`);
+  return applyUrlFor(job.job as unknown as Parameters<typeof applyUrlFor>[0]);
+}
+
+type AccountsOptions = { email?: string; create?: boolean; terms?: boolean; verifyEmail?: boolean; maxNew?: number; off?: boolean; preview?: boolean; clear?: boolean; terminal?: boolean; yes?: boolean };
+
 program
   .command("accounts [action] [target]")
-  .description("Job-board accounts the tool may use. list (the default) | add workday | add <a link to the employer's careers site> | password | status | disconnect <id or all>. Today the tool signs in on Workday")
+  .description("Job-board accounts the tool may use (Workday today). With no action: what is set up. signin <employer> | add workday | add <link> | password [employer] | setup <employer> | clear | off | on | forget <employer or all>")
   .option("--email <address>", "the address your accounts use. The default is the one in your profile")
-  .option("--create", "the tool may make an account where the employer has none for you")
+  .option("--create", "experimental: the tool may make an account where the employer has none for you")
   .option("--terms", "the tool may tick the account terms box on the sign-up form")
-  .option("--verify-email", "the tool may read the verification email the board sends you (needs: npx jev gmail connect)")
+  .option("--verify-email", "experimental: the tool may read the verification email the board sends you (needs Gmail connected)")
   .option("--max-new <n>", "new employer accounts per day, at most", int)
-  .option("--clear", "with status: lift every pause, after you fixed what was wrong")
+  .option("--off", "with add <link>: leave this employer alone, whatever the rule for its board says")
+  .option("--preview", "with add: say what this would allow, and save nothing")
+  .option("--clear", "lift every pause, after you fixed what was wrong")
   .option("--terminal", "with password: ask in this terminal, not in a window")
-  .action((action: string | undefined, target: string | undefined, o: { email?: string; create?: boolean; terms?: boolean; verifyEmail?: boolean; maxNew?: number; clear?: boolean; terminal?: boolean }) => {
+  .option("--yes", "with forget: do it without asking")
+  .action(async (action: string | undefined, target: string | undefined, o: AccountsOptions) => {
     const store = defaultStore();
-    const consent = () => ({ email: o.email ?? loadProfile().email, create: !!o.create, terms: !!o.terms, verifyEmail: !!o.verifyEmail, ...(o.maxNew !== undefined ? { maxNew: o.maxNew } : {}) });
-    if (!action || action === "list" || action === "status") {
-      if (o.clear) console.log(`${clearPauses()} pause(s) lifted.`);
-      return console.log(describeAccounts(store).join("\n"));
+    const email = () => o.email ?? loadProfile().email;
+    const show = () => console.log(describeAccounts(store).join("\n"));
+    if (!action || action === "list" || action === "status" || action === "clear") {
+      if (o.clear || action === "clear") console.log(`${clearPauses()} pause(s) lifted.`);
+      return show();
     }
-    if (action === "password") {
-      if (process.platform !== "darwin") return console.log("This machine has no Keychain. Put the password in .env as JEV_ACCOUNTS_PASSWORD=...");
-      if (o.terminal) {
-        // For a Mac with no screen to show a window on: `security` asks in the terminal itself.
-        console.log("Type the one password your job-board accounts use. It is not shown.\nWorkday wants at least 8 characters with a digit, a lower-case letter, an upper-case letter and a special character.");
-        if (!store.setByPerson(ACCOUNTS.passwordItem)) return console.log("Nothing was stored.");
-        const stored = store.get(ACCOUNTS.passwordItem);
-        const problems = stored ? passwordProblems(stored) : ["to be readable from the Keychain"];
-        if (problems.length) return console.log(`Stored, but Workday will refuse it: it needs ${problems.join(", ")}. Run the command again with another password.`);
-      } else {
-        console.log("A window on your Mac is asking for the one password your job-board accounts use. Type it there, twice. It goes into your Keychain and is never shown here.");
-        const asked = askPassword();
-        if (!asked.ok) return console.log(asked.why === "cancelled" ? "Nothing was stored: the window was closed or left unanswered." : asked.why === "mismatch" ? "Nothing was stored: the two did not match. Run it again." : `Nothing was stored: the password needs ${(asked.problems ?? []).join(", ")}. Run it again.`);
-        store.set(ACCOUNTS.passwordItem, asked.password);
-      }
-      clearPauses();
-      return console.log("Stored in your Keychain. To see what is set up: /accounts, or npx jev accounts");
+    if (action === "on" || action === "off") {
+      setEnabled(action === "on");
+      console.log(action === "on" ? "Sign-ins are on." : "Sign-ins are off. Nothing signs in until you switch them on again. Your accounts, passwords and sessions are kept; to remove those from this Mac: /accounts forget all");
+      return show();
     }
     if (action === "add") {
       if (!target) return console.log("Say what to add: `accounts add workday` for every Workday employer, or `accounts add <link>` for one employer.");
-      if (target === "workday") {
-        setRule("workday", consent());
-        console.log("Saved. Jobs on Workday are found by the next discover.");
-      } else {
-        const a = addEmployer(target, consent());
-        console.log(`Saved ${a.id} (${a.mode === "create_if_missing" ? "the tool may make the account" : "an account you already have"}).`);
+      if (target !== "workday" && o.off) {
+        const a = leaveAlone(target, email());
+        return console.log(`Saved. The tool leaves ${a.tenant} alone.`);
       }
-      return console.log(describeAccounts(store).join("\n"));
+      const consent = { email: email(), create: !!o.create, terms: !!o.terms, verifyEmail: !!o.verifyEmail, ...(o.maxNew !== undefined ? { maxNew: o.maxNew } : {}) };
+      const where = target === "workday" ? "every employer on Workday" : (adapterFor(target)?.tenant.tenant ?? target);
+      console.log(describeConsent(consent, where).join("\n"));
+      if (o.preview) return console.log("\nNothing was saved. Run it again without --preview to save this.");
+      if (target === "workday") setRule("workday", consent);
+      else addEmployer(target, consent);
+      console.log("\nSaved. To take it back: /accounts off, or /accounts forget all\n");
+      return show();
     }
-    if (action === "disconnect") {
-      if (!target) return console.log("Say which: an account id from `npx jev accounts`, or all.");
-      console.log(`${removeAccounts(target)} account(s) forgotten. The accounts themselves still exist on the employers' sites, and the password stays in your Keychain.`);
-      return;
+    if (action === "password") {
+      if (process.platform !== "darwin") return console.log("This machine has no Keychain. Put the password in .env as JEV_ACCOUNTS_PASSWORD=...");
+      // With an employer: that account's own password. Without: the one tried at accounts you already had.
+      let item: string = ACCOUNTS.passwordItem;
+      let what = "The password you use on job-board accounts you already have.";
+      let id = "";
+      if (target) {
+        const named = accountsNamed(target)[0] ?? (adapterFor(target) ? addEmployer(target, { email: email(), create: false, terms: false, verifyEmail: false }) : null);
+        if (!named) return console.log(`No account named "${target}". Give the employer's name as /accounts shows it, or a link to its careers site.`);
+        item = itemFor(named.id);
+        what = `Your password at ${named.tenant} (${named.allowedOrigins[0]}).`;
+        id = named.id;
+      }
+      if (o.terminal) {
+        console.log(`${what} Type it below. It is not shown.`);
+        if (!store.setByPerson(item)) return console.log("Nothing was stored.");
+      } else {
+        console.log("A window on your Mac is asking for the password. Type it there, twice. It goes into your Keychain and is never shown here.");
+        const asked = askPassword(undefined, { what, existing: true });
+        if (!asked.ok) return console.log(asked.why === "cancelled" ? "Nothing was stored: the window was closed or left unanswered." : asked.why === "mismatch" ? "Nothing was stored: the two did not match. Run it again." : `Nothing was stored: the password needs ${(asked.problems ?? []).join(", ")}.`);
+        store.set(item, asked.password);
+      }
+      clearPauses({}, id || undefined);
+      return console.log(`Stored in your Keychain${id ? `, and the pause on ${id} is lifted` : ""}. Then: /resume`);
     }
-    console.log("The actions are: list, add, password, status, disconnect");
+    if (action === "signin" || action === "setup") {
+      if (!target) return console.log(`Say where: /accounts ${action} <employer or a link to one of its postings>`);
+      const url = applicationFor(target);
+      await inRun(`accounts ${action}`, async () => {
+        const tab = await newTab("about:blank");
+        const page = await Page.attach(tab);
+        let keep = false;
+        try {
+          await goto(page, url);
+          await page.bringToFront();
+          if (action === "signin") {
+            // The person signs in themselves, in the tool's own window. Nothing is typed for them; the session is what the tool keeps.
+            console.log(`The employer's page is open in the tool's Chrome window. Sign in there yourself (or make your account). This waits up to ${Math.round(RUN.resumeWaitMs / 60_000)} minutes.`);
+            const deadline = Date.now() + RUN.resumeWaitMs;
+            let there = false;
+            while (!there && Date.now() < deadline) {
+              there = await signedInNow(page, url, email()).catch(() => false);
+              if (!there) await sleep(ACCOUNTS.stepMs);
+            }
+            console.log(there ? "Signed in. The tool keeps this session and uses it for jobs at this employer. When it ends, you sign in again the same way." : "Not signed in yet. The page stays open; run this again when you are through.");
+            keep = !there;
+          } else {
+            console.log("Signing in, or making the account where you allowed it. This is real: an account made here exists at the employer.");
+            const r = await signInFor(page, url);
+            if (!r) return console.log("That link is not on a board the tool signs in to.");
+            console.log(r.ok ? `${r.created ? "The account was made and is signed in" : "Signed in"}: ${r.account.id}.` : `Stopped: ${r.reason}`);
+            keep = !r.ok && r.status !== "login_required" && r.status !== "queued";
+            if (keep) console.log("The page stays open in the tool's window.");
+          }
+        } finally {
+          page.close();
+          if (!keep) await closeTab(tab.id);
+        }
+      });
+      return show();
+    }
+    if (action === "forget") {
+      if (!target) return console.log("Say which: an employer as /accounts shows it, or all.");
+      const which = accountsNamed(target);
+      if (!o.yes) return console.log(`This removes from this Mac, for ${target === "all" ? "every account and the standing rule" : which.map((a) => a.id).join(", ") || target}: the entry, its stored password, and its sign-in session in the tool's Chrome.\nIt does not delete the account at the employer: close that on the employer's own site if you want it gone.\nTo go ahead: npx jev accounts forget ${target} --yes`);
+      const gone = forgetAccounts(target, store);
+      // The sessions live in the tool's own Chrome. They are cleared now if it is open, and otherwise the next time it is asked.
+      const origins = [...new Set(gone.flatMap((a) => a.allowedOrigins))];
+      if (origins.length && (await listTargets())) {
+        const tab = await newTab("about:blank");
+        const page = await Page.attach(tab);
+        for (const origin of origins) await page.send("Storage.clearDataForOrigin", { origin, storageTypes: "all" }).catch(() => undefined);
+        page.close();
+        await closeTab(tab.id);
+        console.log(`${gone.length} account(s) removed from this Mac, with their passwords and sessions.`);
+      } else {
+        console.log(`${gone.length} account(s) removed from this Mac, with their passwords.${origins.length ? " The tool's Chrome is not open, so their sign-in sessions are still in it: npx jev browser reset --yes clears every session." : ""}`);
+      }
+      return console.log("The accounts themselves still exist at the employers.");
+    }
+    console.log("The actions are: signin, add, password, setup, clear, off, on, forget");
   });
 
 program

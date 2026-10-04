@@ -41,22 +41,20 @@ describe("doctor", () => {
     expect(nextStep(checks)).toBe("run discover");
     expect(nextStep([ok("Node.js")])).toMatch(/Everything is in place/);
   });
-  it("treats job-board accounts as optional, and says what a sign-in still lacks", () => {
+  it("treats job-board accounts as optional, and says how each part works", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "jev-doctor-"));
     const files = { accounts: path.join(dir, "accounts.json"), gmail: path.join(dir, "gmail.json") };
     const store = new MemoryStore();
-    expect(checkAccounts(store, files)).toMatchObject({ ok: true, optional: true });
+    expect(checkAccounts(store, files)).toMatchObject({ ok: true, optional: true, detail: expect.stringMatching(/not set up/) });
     writeFileSync(files.accounts, JSON.stringify({ providers: { workday: { email: "candidate@example.com", mode: "create_if_missing", emailVerification: true, agreements: ["account_terms"] } } }));
-    expect(checkAccounts(store, files)).toMatchObject({ ok: false, optional: true, fix: expect.stringMatching(/accounts password/) });
-    store.values.set("accounts-password", "weakpass");
-    expect(checkAccounts(store, files).detail).toMatch(/will be refused/);
-    // Made up for the test.
-    store.values.set("accounts-password", "Fake-Pass-123!");
-    expect(checkAccounts(store, files)).toMatchObject({ ok: false, fix: expect.stringMatching(/gmail connect/) });
+    // No password is needed from the person: new accounts get one made for them. Gmail is optional too.
+    expect(checkAccounts(store, files)).toMatchObject({ ok: true, detail: expect.stringMatching(/you click each verification link/) });
     writeFileSync(files.gmail, JSON.stringify({ clientId: "1234567890-fake.apps.googleusercontent.com", email: "candidate@example.com", connectedAt: "2026-10-03T00:00:00Z" }));
     store.values.set("gmail-refresh-token", "1//fake-refresh-token-0123456789");
     const ready = checkAccounts(store, files);
-    expect(ready.ok).toBe(true);
-    expect(JSON.stringify(ready)).not.toMatch(/Fake-Pass|fake-refresh/);
+    expect(ready.detail).toMatch(/read from Gmail/);
+    expect(JSON.stringify(ready)).not.toMatch(/fake-refresh/);
+    writeFileSync(files.accounts, JSON.stringify({ enabled: false, accounts: [{ id: "workday:acme", provider: "workday", tenant: "acme", allowedOrigins: ["https://acme.wd5.myworkdayjobs.com"], email: "candidate@example.com", mode: "existing_only" }] }));
+    expect(checkAccounts(store, files).detail).toMatch(/switched off/);
   });
 });

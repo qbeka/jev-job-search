@@ -1,10 +1,11 @@
 {
   "version": 1,
+  "enabled": true,
   "providers": {
     "workday": {
       "email": "you@example.com",
       "mode": "create_if_missing",
-      "emailVerification": true,
+      "emailVerification": false,
       "agreements": ["account_terms"],
       "maxNewAccountsPerDay": 3,
       "secret": { "keychain": "accounts-password" }
@@ -17,8 +18,20 @@
       "tenant": "acme",
       "allowedOrigins": ["https://acme.wd5.myworkdayjobs.com"],
       "email": "you@example.com",
-      "secret": { "keychain": "accounts-password" },
+      "secret": { "keychain": "account:workday:acme" },
       "mode": "existing_only",
+      "emailVerification": false,
+      "agreements": [],
+      "createdAt": null
+    },
+    {
+      "id": "workday:globex",
+      "provider": "workday",
+      "tenant": "globex",
+      "allowedOrigins": ["https://globex.wd1.myworkdayjobs.com"],
+      "email": "you@example.com",
+      "secret": { "keychain": "account:workday:globex" },
+      "mode": "off",
       "emailVerification": false,
       "agreements": [],
       "createdAt": null

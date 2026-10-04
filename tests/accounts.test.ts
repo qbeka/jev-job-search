@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ensureSignedIn, type AuthContext } from "../src/accounts/auth.js";
 import { askPassword } from "../src/accounts/ask.js";
 import { accountGate, adapterFor, capabilityFor } from "../src/accounts/capability.js";
-import { addEmployer, clearPauses, describeAccounts, removeAccounts, setRule } from "../src/accounts/commands.js";
+import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule } from "../src/accounts/commands.js";
 import { AccountsFile, dayOf, loadAccounts, loadState, mutateState, stateOf } from "../src/accounts/config.js";
 import type { AuthSnapshot, VerificationFound, VerificationRequest, Verifier } from "../src/accounts/provider.js";
-import { EnvStore, envNameOf, KeychainStore, MemoryStore, passwordProblems } from "../src/accounts/secrets.js";
+import { EnvStore, envNameOf, generatePassword, itemFor, KeychainStore, MemoryStore, passwordProblems } from "../src/accounts/secrets.js";
 import { workday } from "../src/accounts/workday.js";
 import { ACCOUNTS } from "../src/config.js";
 import { pickJobs } from "../src/run/pipeline.js";
@@ -30,6 +30,12 @@ beforeEach(() => {
   store.values.set(ACCOUNTS.passwordItem, PASSWORD);
 });
 
+const OWN = itemFor("workday:acme");
+/** Forgets everything set up so far, and puts back the password the person uses on accounts they already had. */
+const startOver = () => {
+  forgetAccounts("all", store, files);
+  store.values.set(ACCOUNTS.passwordItem, PASSWORD);
+};
 const allowAll = (over: Partial<Parameters<typeof setRule>[1]> = {}) => setRule("workday", { email: EMAIL, create: true, terms: true, verifyEmail: true, ...over }, files);
 const server = (over: Partial<Server> = {}): Server => ({ account: null, verifies: false, token: "tok123", ...over });
 const ctx = (verifier: Verifier | null = null): AuthContext => ({ adapter: workday, tenant: { tenant: "acme", origin: ORIGIN }, applicationUrl: APPLY, secrets: store, verifier, files, now: () => NOW });
@@ -106,14 +112,19 @@ describe("signing in", () => {
     expect(r.ok && r.created).toBe(true);
     expect(page.view).toBe("application");
     expect(page.terms).toBe(true);
-    expect(page.server.account).toEqual({ email: EMAIL, password: PASSWORD, verified: true });
+    // The account has a password of its own, made by the tool and kept in the store. It is not the one the person uses elsewhere.
+    const own = store.values.get(OWN) ?? "";
+    expect(page.server.account).toEqual({ email: EMAIL, password: own, verified: true });
+    expect(own).not.toBe(PASSWORD);
+    expect(passwordProblems(new Secret(own))).toEqual([]);
     expect(passwordStayedHome(page)).toBe(true);
     const saved = loadAccounts(files.accounts).accounts[0];
     expect(saved).toMatchObject({ id: "workday:acme", tenant: "acme", allowedOrigins: [ORIGIN], email: EMAIL, mode: "create_if_missing" });
     expect(saved?.createdAt).toBe(NOW.toISOString());
     expect(loadState(files.state).created[dayOf(NOW)]).toBe(1);
     // Nothing secret reaches a file.
-    expect(readFileSync(files.accounts, "utf8") + readFileSync(files.state, "utf8")).not.toContain(PASSWORD);
+    expect(readFileSync(files.accounts, "utf8") + readFileSync(files.state, "utf8")).not.toContain(own);
+    expect(JSON.stringify(r)).not.toContain(own);
   });
 
   it("waits for a page that is still drawing itself, and declines the cookie notice", async () => {
@@ -188,7 +199,7 @@ describe("signing in", () => {
 
   it("does not retry a sign-in the board refused in words it does not know, or without a word", async () => {
     for (const says of ["We could not complete your request.", ""]) {
-      removeAccounts("all", files);
+      startOver();
       addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
       const page = new FakeWorkday(server({ account: { email: EMAIL, password: PASSWORD, verified: true }, signInSays: says }));
       const r = await ensureSignedIn(page, ctx());
@@ -248,11 +259,13 @@ describe("signing in", () => {
     expect(r).toMatchObject({ ok: false, status: "awaiting_user_action", waitingFor: "robot_check" });
     expect(loadAccounts(files.accounts).accounts).toEqual([]);
     expect(loadState(files.state).created[dayOf(NOW)]).toBe(0);
+    // The password made for an account that was not made is gone too.
+    expect(store.values.has(OWN)).toBe(false);
   });
 
   it("does not write down an account the board did not make", async () => {
     for (const says of ["Something went wrong.", ""]) {
-      removeAccounts("all", files);
+      startOver();
       allowAll();
       const page = new FakeWorkday(server({ signUpSays: says }));
       const r = await ensureSignedIn(page, ctx());
@@ -273,15 +286,6 @@ describe("signing in", () => {
     expect(r).toMatchObject({ ok: false, waitingFor: "robot_check" });
     expect(loadAccounts(files.accounts).accounts).toEqual([mine]);
     expect(capabilityFor(APPLY, files, NOW)).toMatchObject({ verdict: "can", creates: true });
-  });
-
-  it("will not sign up with a password the board's rules refuse", async () => {
-    allowAll();
-    store.values.set(ACCOUNTS.passwordItem, "weakpass");
-    const page = new FakeWorkday(server());
-    const r = await ensureSignedIn(page, ctx());
-    expect(r).toMatchObject({ ok: false, status: "login_required" });
-    expect(page.typed).toEqual([]);
   });
 
   it("does not accept account terms the person has not approved", async () => {
@@ -313,12 +317,74 @@ describe("signing in", () => {
     expect(page.typed).toEqual([]);
   });
 
-  it("says so when no password is stored", async () => {
+  it("needs no password from the person to make an account, and gives every employer its own", async () => {
     allowAll();
     store.values.clear();
     const r = await ensureSignedIn(new FakeWorkday(server()), ctx());
-    expect(r).toMatchObject({ ok: false, status: "login_required" });
-    expect(!r.ok && r.reason).toMatch(/accounts password/);
+    expect(r.ok && r.created).toBe(true);
+    const a = generatePassword().reveal();
+    const b = generatePassword().reveal();
+    expect(a).not.toBe(b);
+    expect(a).toHaveLength(ACCOUNTS.generatedLength);
+    expect(passwordProblems(new Secret(a))).toEqual([]);
+  });
+
+  it("uses only a session the person started when no password is stored for an employer", async () => {
+    addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
+    store.values.clear();
+    // Signed in by the person: used as it is.
+    const open = new FakeWorkday(server(), "application");
+    open.header = EMAIL;
+    expect((await ensureSignedIn(open, ctx())).ok).toBe(true);
+    // The session has ended: nothing is typed, and the person is asked to sign in again or store that employer's password.
+    const ended = new FakeWorkday(server({ account: { email: EMAIL, password: PASSWORD, verified: true } }));
+    const r = await ensureSignedIn(ended, ctx());
+    expect(r).toMatchObject({ ok: false, status: "awaiting_user_action", waitingFor: "login" });
+    expect(!r.ok && r.reason).toMatch(/accounts password acme/);
+    expect(ended.typed).toEqual([]);
+    expect(ended.signInClicks).toBe(0);
+    // Once that employer's own password is stored, it is the one used.
+    store.values.set(OWN, PASSWORD);
+    expect((await ensureSignedIn(new FakeWorkday(ended.server), ctx())).ok).toBe(true);
+  });
+
+  it("makes no account and asks for no email in a rehearsal, and still signs in to an account the person has", async () => {
+    allowAll();
+    const fresh = new FakeWorkday(server());
+    const r = await ensureSignedIn(fresh, { ...ctx(), rehearsal: true });
+    expect(r).toMatchObject({ ok: false, status: "queued" });
+    expect(!r.ok && r.reason).toMatch(/rehearsal makes no account.*accounts setup acme/);
+    expect(fresh.registerClicks).toBe(0);
+    expect(fresh.typed).toEqual([]);
+    expect(store.values.has(OWN)).toBe(false);
+    expect(loadAccounts(files.accounts).accounts).toEqual([]);
+    addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
+    const mine = new FakeWorkday(server({ account: { email: EMAIL, password: PASSWORD, verified: true } }));
+    expect((await ensureSignedIn(mine, { ...ctx(), rehearsal: true })).ok).toBe(true);
+    // An account that still has to prove its address is not chased in a rehearsal either.
+    startOver();
+    addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: true }, files);
+    const v = scriptedVerifier([{ ok: true, messageId: "m", link: `${ORIGIN}/Careers/activate/tok123`, code: null }]);
+    const unproven = new FakeWorkday(server({ verifies: true, account: { email: EMAIL, password: PASSWORD, verified: false } }));
+    const waits = await ensureSignedIn(unproven, { ...ctx(v), rehearsal: true });
+    expect(waits).toMatchObject({ ok: false, status: "queued" });
+    expect(v.asked).toEqual([]);
+  });
+
+  it("does nothing while sign-ins are switched off, or for an employer the person said to leave alone", async () => {
+    allowAll();
+    setEnabled(false, files);
+    const page = new FakeWorkday(server());
+    expect(await ensureSignedIn(page, ctx())).toMatchObject({ ok: false, status: "login_required" });
+    expect(capabilityFor(APPLY, files, NOW)?.verdict).toBe("no");
+    setEnabled(true, files);
+    expect(capabilityFor(APPLY, files, NOW)?.verdict).toBe("can");
+    leaveAlone(APPLY, EMAIL, files);
+    expect(capabilityFor(APPLY, files, NOW)).toMatchObject({ verdict: "no" });
+    expect(await ensureSignedIn(page, ctx())).toMatchObject({ ok: false, status: "login_required" });
+    // The rule still stands for every other employer.
+    expect(capabilityFor("https://globex.wd1.myworkdayjobs.com/Careers/job/x/Intern_R2", files, NOW)?.verdict).toBe("can");
+    expect(page.clicks).toEqual([]);
   });
 
   it("types nothing on a page that is not the employer's own site", async () => {
@@ -367,7 +433,7 @@ describe("proving the address by email", () => {
     allowAll();
     const first = await ensureSignedIn(new FakeWorkday(server({ verifies: true })), ctx(null));
     expect(first).toMatchObject({ ok: false, status: "awaiting_email_verification" });
-    removeAccounts("all", files);
+    startOver();
     allowAll({ verifyEmail: false });
     const v = scriptedVerifier([{ ok: true, messageId: "m1", link, code: null }]);
     const second = await ensureSignedIn(new FakeWorkday(server({ verifies: true })), ctx(v));
@@ -430,7 +496,9 @@ describe("proving the address by email", () => {
       s.accounts["workday:acme"] = { ...stateOf(s, "workday:acme"), pendingSince: clicked };
       s.created[dayOf(NOW)] = 1;
     }, files.state);
-    const page = new FakeWorkday(server({ verifies: true, account: { email: EMAIL, password: PASSWORD, verified: false } }));
+    // That run made a password for the account before it clicked. The account was made with it.
+    store.values.set(OWN, "Earlier-Made-Pass-1!");
+    const page = new FakeWorkday(server({ verifies: true, account: { email: EMAIL, password: "Earlier-Made-Pass-1!", verified: false } }));
     const v = scriptedVerifier([{ ok: true, messageId: "m5", link, code: null }]);
     const r = await ensureSignedIn(page, ctx(v));
     // The board says the account is there, so it is signed in to and its address proven. It is not counted twice.
@@ -440,6 +508,7 @@ describe("proving the address by email", () => {
     expect(v.asked[0]?.since.toISOString()).toBe(clicked);
     expect(loadState(files.state).created[dayOf(NOW)]).toBe(1);
     expect(stateOf(loadState(files.state), "workday:acme").pendingSince).toBeNull();
+    expect(store.values.get(OWN)).toBe("Earlier-Made-Pass-1!");
   });
 
   it("writes the account down as made once the board asks for the address to be proven", async () => {
@@ -522,11 +591,33 @@ describe("the accounts file and the secret store", () => {
   it("describes what is set up without any secret", () => {
     allowAll();
     addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
+    store.values.set(OWN, "Own-Made-Up-Pass-7!");
     const text = describeAccounts(store, files, NOW).join("\n");
-    expect(text).toMatch(/stored in the Keychain|set in \.env/);
-    expect(text).toMatch(/workday:acme/);
+    expect(text).toMatch(/A password for accounts you already had is stored/);
+    expect(text).toMatch(/workday:acme.*its own password is stored/);
     expect(text).not.toContain(PASSWORD);
-    expect(removeAccounts("workday:acme", files)).toBe(1);
+    expect(text).not.toContain("Own-Made-Up-Pass-7!");
+    expect(accountsNamed("acme", files).map((a) => a.id)).toEqual(["workday:acme"]);
+    expect(accountsNamed(APPLY, files)).toHaveLength(1);
+    // Forgetting one employer removes its entry, its password and what was remembered. The rule and the other password stay.
+    expect(forgetAccounts("acme", store, files).map((a) => a.id)).toEqual(["workday:acme"]);
+    expect(store.values.has(OWN)).toBe(false);
+    expect(store.values.has(ACCOUNTS.passwordItem)).toBe(true);
+    expect(loadAccounts(files.accounts).providers.workday).toBeDefined();
+    forgetAccounts("all", store, files);
+    expect(store.values.size).toBe(0);
+    expect(loadAccounts(files.accounts)).toMatchObject({ providers: {}, accounts: [] });
+  });
+
+  it("says in plain words what a rule allows before it is saved", () => {
+    const all = describeConsent({ email: EMAIL, create: true, terms: true, verifyEmail: true, maxNew: 2 }, "every employer on Workday").join("\n");
+    expect(all).toMatch(/EXPERIMENTAL\. Where you have no account, the tool makes one/);
+    expect(all).toMatch(/At most 2 new accounts a day/);
+    expect(all).toMatch(/agreeing to each employer's terms/);
+    expect(all).toMatch(/never passes a robot check/);
+    const least = describeConsent({ email: EMAIL, create: false, terms: false, verifyEmail: false }, "acme").join("\n");
+    expect(least).toMatch(/nothing is made/);
+    expect(least).not.toMatch(/EXPERIMENTAL/);
   });
 
   it("checks a password against the board's rules without showing it", () => {

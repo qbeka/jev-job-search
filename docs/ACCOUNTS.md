@@ -1,84 +1,117 @@
 # Accounts
 
-*How the tool applies on a job board that wants an account, what you have
-to allow first, and what stays yours to do.*
+*How the tool applies on a job board that wants an account, what you
+decide, and what stays yours to do.*
 
 Most of the boards the tool fills need no account. Workday does: every
 employer on Workday keeps its own accounts, and you cannot see the form
-until you are signed in. That is a large share of all postings. This page
-is about letting the tool use those accounts for you.
+until you are signed in. That is a large share of all postings.
 
 Today the tool signs in on **Workday** and nowhere else. iCIMS, Taleo,
 Oracle, SuccessFactors and LinkedIn are still skipped.
 
-Everything here is off until you turn it on.
+Everything here is off until you turn it on. There are three ways to use
+it, from the simplest to the most automatic. Start with the first.
 
-## What you allow, one thing at a time
+| | What you do | What the tool does | Status |
+|---|---|---|---|
+| **1. You sign in once** | Sign in at an employer yourself, in the tool's Chrome window | Keeps that session and uses it for jobs at that employer | Works today |
+| **2. It signs in for you** | Store that employer's password, once | Signs in when the session has ended | Tested on scripted pages only |
+| **3. It makes accounts** | Say that it may, and whether it may accept terms and read verification mail | Makes an account with its own random password where you have none | **Experimental** |
 
-| You allow | In a terminal that is | Without it |
-|---|---|---|
-| Signing in to accounts you have | `accounts add <link>` or `accounts add workday` | Workday jobs are skipped, as before |
-| Making an account where an employer has none for you | `--create` | The job goes on your by-hand list |
-| Ticking the account terms box on the sign-up form | `--terms` | The sign-up page is left open for you to accept |
-| Reading the email the board sends to prove your address | `--verify-email`, and `gmail connect` | The tool waits; you click the link yourself |
+## 1. Sign in once yourself
 
-A marketing or newsletter box on a sign-up form is never ticked.
+```
+/accounts signin <employer>
+```
 
-## Turn it on
+The employer's page opens in the tool's own Chrome window. You sign in
+there, or make your account there, the way you always would: your
+password, a code on your phone, a robot check, whatever it asks. The tool
+types nothing. When the page shows the application, the tool notes that
+this employer is yours, keeps the session, and from then on fills that
+employer's forms like any other.
 
-In Claude Code it is three short commands. Each one asks or shows you
-what it needs; you never type a long command.
+`<employer>` is the name as it appears in the employer's Workday address
+(`acme` in `acme.wd5.myworkdayjobs.com`), or the link of one of its
+postings. Jobs at employers you have signed in to are found by the next
+`/discover`.
 
-| Type | What happens |
+When the session ends, days or weeks later, the job waits for you and you
+sign in again the same way. Nothing is stored except the session in the
+tool's Chrome.
+
+## 2. Let it sign in when the session ends
+
+```
+/accounts password <employer>
+```
+
+A window opens on your Mac. You type that employer's password there,
+twice, hidden. It goes into your Mac's Keychain under that employer's
+name and is never shown, written to a file, or sent to Claude or JEV. Do
+not paste a password into a chat.
+
+Each employer has its own password in the Keychain. If you use one
+password on several accounts you already had, `/accounts password` with
+no employer stores that one, and it is tried once at an employer that has
+none of its own.
+
+A password the employer refuses is never tried twice. That account is
+paused and the page is left open for you. Then either sign in yourself in
+the tool's window, or type `/accounts password <employer>` again with the
+right one. Both lift the pause; `/resume` carries on.
+
+## 3. Let it make accounts (experimental)
+
+```
+/accounts add workday
+```
+
+This asks you three things, shows you in plain words what your answers
+allow, and saves them only after you say yes.
+
+| You allow | Without it |
 |---|---|
-| `/accounts` | Says what is set up and what the next step is |
-| `/accounts add workday` | Asks the questions in the table above, one at a time, and saves your answers |
-| `/accounts add <link>` | One employer you already have an account with |
-| `/accounts password` | Opens a window on your Mac. You type the one password there, twice |
-| `/accounts gmail` | Walks you through connecting Gmail, if you allowed the verification email |
-| `/accounts clear` | Lifts a pause, after you fixed what caused it |
-| `/accounts remove all` | Forgets every account and the rule |
+| Making an account where an employer has none for you. Each is a real account with that employer, in your name, under your address | The job is left for you |
+| Ticking the box that accepts the employer's candidate-account terms. You are agreeing to each employer's terms without reading them one by one | The sign-up page is left open for you to accept |
+| Reading the one email the employer sends to prove your address, through Gmail if you connected it | You click the link in the email yourself |
 
-**1. Say what the tool may do**, with `/accounts add workday`. In a
-terminal the same is:
+A marketing or newsletter box is never ticked. At most 3 new accounts are
+made in a day.
 
-```bash
-npx jev accounts add workday --create --terms --verify-email
+**You choose no password.** Each new account gets its own long random
+password, made by the tool and kept in your Keychain before anything is
+typed. No two employers share one. To sign in by hand later, open
+**Keychain Access**, search for `jev-job-search`, and look at the item
+named `account:workday:<employer>`, or use the employer's "Forgot your
+password?" link.
+
+Making the account is a separate step from rehearsing, and it is always
+started by you:
+
+```
+/accounts setup <employer>
 ```
 
-Or for one employer you already have an account with:
+A rehearsal (`--dry`) never makes an account and never asks an employer
+for a verification email. Where an account is missing, the rehearsal says
+so and names this command.
+
+To say that one employer is different from the rest, in a terminal:
 
 ```bash
-npx jev accounts add https://acme.wd5.myworkdayjobs.com/Careers
+npx jev accounts add https://acme.wd5.myworkdayjobs.com/Careers --off
 ```
 
-The address used is the one in your profile. `--email` gives another.
-`--max-new 3` is the most new accounts in one day, and 3 is the default.
+`--off` leaves that employer alone whatever the rule says. Without it, the
+same command with `--create`, `--terms` or `--verify-email` sets that one
+employer's own answers.
 
-**2. Set the password**, with `/accounts password`. One password for all
-your job-board accounts. A window opens on your Mac and you type it there,
-twice, hidden. In a terminal the same is:
-
-```bash
-npx jev accounts password
-```
-
-The tool checks it against Workday's rules (8 or more characters, a digit,
-a lower-case letter, an upper-case letter, a special character) and asks
-again, naming the rule, if it misses one. It never prints the password,
-never writes it to a file, and never sends it to Claude or JEV: it goes
-from that window into your Keychain. Do not paste it into a chat. On a Mac
-with no screen, `npx jev accounts password --terminal` asks in the
-terminal.
-
-If you already have accounts with some employers under another password,
-the tool will find out on the first sign-in, stop, and leave that employer
-to you. It does not try twice.
-
-**3. Connect Gmail (optional)**, with `/accounts gmail`. Only if you
-allowed the verification email. See [Connect Gmail](#connect-gmail) below.
-
-Then `/accounts` shows what is set up, and `/discover` finds the jobs.
+Why this is marked experimental: no real account was made while it was
+built. What Workday says after a sign-up is matched by wording, and its
+verification emails have not been seen. Wording the tool does not know
+stops the job for you; it never guesses and never tries again by itself.
 
 ## What happens on a Workday job
 
@@ -86,24 +119,15 @@ Then `/accounts` shows what is set up, and `/discover` finds the jobs.
 open the posting's application
   already signed in as you            -> fill the form
   signed in as someone else           -> stops, waits for you
-  you have an account here            -> sign in, once
-       wrong password, locked         -> stops, waits for you, leaves the account alone
-  no account here, and you allowed it -> sign up: your address, the password, the terms box
-       "an account already exists"    -> sign in, once
+  you have an account here
+       its password is stored         -> sign in, once
+            refused, locked, unclear  -> stops, pauses that account, waits for you
+       no password stored             -> stops, waits for you to sign in
+  no account here, and you allowed it -> (never in a rehearsal) sign up with a new random password
+       "an account already exists"    -> sign in, once, if a password for it is stored
        a robot check                  -> stops, waits for you
-       "verify your email"            -> read the one email, open its link, sign in
+       "verify your email"            -> read the one email, open its link, sign in; or wait for you to click it
   then the form, page by page, like any other
-```
-
-A rehearsal (`--dry`) sends no application, but the sign-in is real: if the
-employer has no account for you and you allowed making one, one is made.
-
-The first time, rehearse one job and read what it printed. A run that
-signs in at an employer is always started by you: in Claude Code the
-command is shown with a Run button, and in a terminal you type it.
-
-```bash
-npx jev apply <a Workday posting's link> --dry
 ```
 
 ## What stays yours
@@ -114,24 +138,48 @@ notification, and moves on to the next job, when it meets:
 - a CAPTCHA or any "prove you are human" check
 - a code sent to your phone, a passkey, or single sign-on
 - account terms you did not approve
-- a password the board refuses, or an account the board has locked
-- a verification email it cannot use (see the rules below)
+- a password the employer refuses, or an account it has locked
+- a verification email it may not read or cannot use
 - a page it does not recognise
 
-Finish it in the tool's window, then type `/resume`, or in a terminal:
+Finish it in the tool's window, then type `/resume`.
 
-```bash
-npx jev resume --submit
-```
+A code a board emails **because it suspects a robot** (Greenhouse does
+this after several applications) is a human check, not an account
+verification. The tool never reads or types that code, with or without
+Gmail connected.
 
-`resume` sees that you are signed in, fills the form and, with `--submit`,
-sends it when it is ready. Without `--submit` it fills and stops. For a
-verification link you clicked in your own mail, `resume` signs in again to
-see that the address is proven.
+## Every command
 
-A code a board emails **because it suspects a robot** (Greenhouse does this
-after several applications) is a human check, not an account verification.
-The tool never reads or types that code, with or without Gmail connected.
+In Claude Code, type the left column. Nothing here needs a terminal.
+
+| Type | What happens | In a terminal |
+|---|---|---|
+| `/accounts` | What is set up, and the next step. With nothing set up, it walks you through way 1 | `npx jev accounts` |
+| `/accounts signin <employer>` | Opens that employer's page for you to sign in yourself | `npx jev accounts signin <employer>` |
+| `/accounts password <employer>` | A window asks for that employer's password | `npx jev accounts password <employer>` |
+| `/accounts add workday` | Asks what the tool may do for every Workday employer, shows what that allows, saves after a yes | `npx jev accounts add workday --create --terms --verify-email`, with `--preview` to see it first |
+| `/accounts setup <employer>` | Signs in, or makes the account where you allowed it. Always started by you | `npx jev accounts setup <employer>` |
+| `/accounts clear` | Lifts every pause, after you fixed what caused it | `npx jev accounts clear` |
+| `/accounts off`, `/accounts on` | Switches every sign-in off, and on again. Everything you set up is kept | `npx jev accounts off` |
+| `/accounts forget <employer or all>` | Removes from this Mac the entry, its stored password and its session | `npx jev accounts forget all --yes` |
+| `/accounts gmail` | Connects Gmail for verification emails | `npx jev gmail connect --client <file>` |
+
+## Turning it off, and removing what is stored
+
+These are two different things, and neither deletes an account at an
+employer.
+
+- **`/accounts off`** stops the tool from signing in anywhere. Your
+  settings, the stored passwords and the sessions stay, so `/accounts on`
+  brings everything back. Workday jobs are skipped while it is off.
+- **`/accounts forget <employer>`**, or `all`, removes what this Mac
+  holds: the entry, that account's password in the Keychain, what the tool
+  remembered about it, and its sign-in session in the tool's Chrome.
+  `all` also removes the standing rule.
+
+The account itself still exists at the employer. To close it, do that on
+the employer's own site.
 
 ## Limits
 
@@ -139,31 +187,44 @@ The tool never reads or types that code, with or without Gmail connected.
 |---|---|
 | New employer accounts per day | 3, or what you set with `--max-new` |
 | Jobs per new employer in one run | 1 |
-| Sign-in tries per account per day | 3. A wrong password is never retried |
-| After a refused password, a lockout, or a sign-in that did not go through | the account is left alone until you sign in yourself in the tool's window, or run `npx jev accounts status --clear`. Nothing is retried on a timer |
+| Sign-in tries per account per day | 3. A refused password is never retried |
+| After a refused password, a lockout, or a sign-in that did not go through | the account is left alone until you sign in yourself, store the right password, or type `/accounts clear`. Nothing is retried on a timer |
 | Verification emails per sign-up | 1, and one request to send it again |
 
 They are in `ACCOUNTS` and `GMAIL` in `src/config.ts`.
 
-## Connect Gmail
+## Verification emails
 
-When an employer wants your address proven, it emails you a link. With
-Gmail connected, the tool finds that one email and opens the link. It has
-**read-only** access: it cannot send, change or delete mail.
+When an employer wants your address proven, it emails you a link.
 
-Google makes each person create their own "client" for this. It is free
-and takes about five minutes, once.
+**The default: you click it.** The tool leaves the page open and tells
+you. Click the link in your own mail, then type `/resume`. This needs no
+setup at all.
 
-1. Open https://console.cloud.google.com and create a project. Any name.
+**Advanced, experimental: connect Gmail.** The tool then finds that one
+email and opens its link, so a new account needs nothing from you. It has
+read-only access: it cannot send, change or delete mail.
+
+Connecting Gmail takes a Google Cloud project of your own. That is a
+choice this project made, not a rule of Google's: a tool can also ship one
+shared Google sign-in for everybody, but Google asks the developer of such
+an app to pass a security review before it may read mail, and this project
+has not done that. Until it does, each person brings their own. Allow 15
+to 30 minutes the first time; Google's console changes often, and the
+names below may have moved.
+
+1. Open https://console.cloud.google.com and create a project.
 2. In **APIs and services**, open **Library**, find **Gmail API**, and
    click **Enable**.
-3. Open **OAuth consent screen**. Choose **External**, give the app a name
-   and your own address, and save. Then under **Audience**, click
-   **Publish app**. An app left in "Testing" loses its connection every 7
-   days. Publishing an app that only you use needs no review.
-4. Open **Credentials** (or **Clients**), click **Create OAuth client**,
-   choose **Desktop app**, and download the JSON file.
-5. Connect:
+3. Open the **OAuth consent screen** (Google now also calls it "Google
+   Auth Platform"). Choose **External**, give the app a name and your own
+   address, and save. Add your own address as a test user. An app left in
+   "Testing" loses its connection every 7 days; **Publish app** under
+   **Audience** removes that limit, and an app only you use is not
+   reviewed.
+4. Open **Credentials** (or **Clients**), create an **OAuth client**
+   of type **Desktop app**, and download its JSON file.
+5. Type `/accounts gmail <that file>`, or in a terminal:
 
 ```bash
 npx jev gmail connect --client ~/Downloads/client_secret_XXXX.json
@@ -171,19 +232,11 @@ npx jev gmail connect --client ~/Downloads/client_secret_XXXX.json
 
 Your browser opens Google's consent page. Google warns that the app is not
 verified, because it is yours and only you use it: choose **Advanced**,
-then continue, and approve "View your email messages and settings". When
-the terminal says it is connected, you can delete the downloaded file.
-
-```bash
-npx jev gmail status
-```
-
-```bash
-npx jev gmail disconnect
-```
-
-`disconnect` withdraws the access at Google and removes the tokens from
-your Keychain.
+continue, and approve "View your email messages and settings". When it
+says connected, you can delete the downloaded file.
+`npx jev gmail status` shows the connection, and `npx jev gmail
+disconnect` withdraws it at Google and removes the tokens from your
+Keychain.
 
 ### Which email the tool will use
 
@@ -199,17 +252,25 @@ All of these must be true, or the tool stops and leaves the link to you:
   verification path. A link to anywhere else is never opened, and a link
   that redirects off that address is stopped at the redirect.
 
+These rules were written without a real Workday verification email to
+check them against. They are strict on purpose: if Workday's real emails
+come from another sender, or link through another address, the tool
+refuses them and you click the link yourself. Nothing unsafe happens; the
+automation just does not help yet. If that happens to you, an issue with
+the sender's domain and the link's host (not the link itself) is what
+lets the rules be widened to what Workday really sends.
+
 The email's content goes to a small parser in `src/mail/verification.ts`
 and nowhere else. It is never sent to Claude or JEV, never logged, and
-never written to a file. The search the tool sends to Gmail names
-Workday's senders and nothing about you.
+never written to a file.
 
 ## Where things are kept
 
 | What | Where | In git? |
 |---|---|---|
 | What you allowed, and one entry per employer account | `data/accounts.json` | Never. `data/accounts.example.json` shows the shape |
-| The password | macOS Keychain, service `jev-job-search`, item `accounts-password` | No file at all |
+| Each employer account's password | macOS Keychain, service `jev-job-search`, item `account:workday:<employer>` | No file at all |
+| The password for accounts you already had, if you stored one | macOS Keychain, item `accounts-password` | No file at all |
 | Gmail's long-lived token and your client's secret | macOS Keychain, same service | No file at all |
 | Which Gmail address is connected | `data/gmail.json` | Never |
 | When each account last signed in, tries today, pauses, accounts made per day | `data/runs/accounts-state.json` | Never |
@@ -218,37 +279,25 @@ Workday's senders and nothing about you.
 
 `data/accounts.json` holds no secret. You can read it and edit it.
 
-On a machine with no Keychain, the password is read from
-`JEV_ACCOUNTS_PASSWORD` in `.env`, and Gmail cannot be connected.
-
-## Turn it off
-
-```bash
-npx jev accounts disconnect all
-```
-
-This forgets every account and the standing rule. Workday jobs are skipped
-again from the next `discover`. The accounts themselves still exist on the
-employers' sites; close them there if you want them gone. To remove the
-password, open **Keychain Access**, search for `jev-job-search`, and delete
-the item.
+On a machine with no Keychain, a password is read from `.env`
+(`JEV_ACCOUNTS_PASSWORD` for the shared one), new accounts cannot be made,
+and Gmail cannot be connected.
 
 ## What has been tested, and what has not
 
-Said plainly, because nobody should find this out on a real application:
-
-- **Tested without a real account.** The sign-in, the sign-up, the
+- **Tested without a real account.** Signing in, signing up, the
   verification and every stop above run in the test suite against a
-  scripted Workday, and against a mock Workday in a real Chrome on your
+  scripted Workday, and against a mock Workday in a real Chrome on this
   machine, with made-up credentials. Workday's real sign-up and sign-in
   pages were read, with nothing typed, to take the control names from.
-- **Not tested: a real sign-in.** No real account was made or signed in to
-  while this was built. What Workday says after a wrong password, a
-  lockout or a duplicate sign-up is matched by wording, and wording the
-  tool does not recognise stops the job for you and pauses that account.
-  It never guesses and never tries again by itself.
-- **Not tested: Workday's application pages.** They cannot be seen without
-  an account. The form filler treats them like any other form and holds
-  whatever it cannot fill and read back. Expect the first rehearsals to
-  hold on some pages (repeated work-history sections, search-as-you-type
-  pickers). Run `--dry` first, and send the printed report with an issue.
+- **Not tested: a real sign-in or sign-up.** What Workday says after a
+  wrong password, a lockout or a duplicate sign-up is matched by wording.
+- **Not tested: a real verification email.** See above.
+- **Not tested: Workday's application pages.** They cannot be seen
+  without an account. The form filler treats them like any other form and
+  holds whatever it cannot fill and read back. Expect the first rehearsals
+  to hold on some pages (repeated work-history sections, search-as-you-type
+  pickers). Rehearse first, and send the printed report with an issue.
+
+Way 1 depends on the least of this: you do the signing in, and the only
+untested part is the form itself.

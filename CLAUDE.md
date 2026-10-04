@@ -43,7 +43,11 @@ doctor` says what is in place and what to do next.
   `ensureSignedIn` (`src/accounts/auth.ts`) and nothing else: only into a
   box an adapter names, only while the tab is on an origin the account
   allows, only for an account in `data/accounts.json` or one the person's
-  standing rule lets the tool make. A sign-in that was refused, or did not
+  standing rule lets the tool make. Each account has its own password:
+  made at random for a new account, or typed by the person for one they
+  had. With none stored the tool uses only a session the person started.
+  A rehearsal makes no account and asks for no verification email;
+  `accounts setup` is the one command that does. A sign-in that was refused, or did not
   go through, is never retried and never leads to a new account: the
   account is paused until the person lifts it. An account is written down
   as made only once the board shows it exists. Account terms are ticked only when the

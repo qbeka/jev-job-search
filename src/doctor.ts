@@ -7,9 +7,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { ACCOUNTS, BROWSER, childEnv, DOCTOR, GMAIL, PATHS, ROOT, WRITER, writerBackend } from "./config.js";
+import { BROWSER, childEnv, DOCTOR, GMAIL, PATHS, ROOT, WRITER, writerBackend } from "./config.js";
 import { loadAccounts } from "./accounts/config.js";
-import { defaultStore, passwordProblems, type SecretStore } from "./accounts/secrets.js";
+import { defaultStore, type SecretStore } from "./accounts/secrets.js";
 import { loadGmail } from "./mail/gmail.js";
 import { askWriter } from "./answers/resolve.js";
 import { JevClient } from "./jev/client.js";
@@ -112,14 +112,12 @@ export function checkAccounts(store: SecretStore = defaultStore(), files: { acco
   }
   const rule = file.providers.workday;
   if (!rule && !file.accounts.length) return { name, ok: true, optional: true, detail: "not set up, so jobs on Workday are skipped (optional: /accounts)", fix: "" };
-  const password = store.get(ACCOUNTS.passwordItem);
-  if (!password) return { name, ok: false, optional: true, detail: "allowed, but no password is stored", fix: "Run `npx jev accounts password` in a terminal and type the one password your job-board accounts use" };
-  const problems = passwordProblems(password);
-  if (problems.length) return { name, ok: false, optional: true, detail: `the stored password will be refused: it needs ${problems.join(", ")}`, fix: "Run `npx jev accounts password` and choose another password" };
+  if (!file.enabled) return { name, ok: true, optional: true, detail: "set up, and switched off (/accounts on)", fix: "" };
   const wantsMail = !!rule?.emailVerification || file.accounts.some((a) => a.emailVerification);
-  const mail = loadGmail(files.gmail);
-  if (wantsMail && (!mail || !store.get(GMAIL.refreshTokenItem))) return { name, ok: false, optional: true, detail: "allowed, but Gmail is not connected, so a new account waits for you to click its verification link", fix: "Run `npx jev gmail connect --client <file>` (docs/ACCOUNTS.md has the steps), or click each verification link yourself" };
-  return { name, ok: true, optional: true, detail: `Workday: ${rule?.mode === "create_if_missing" ? `sign in or make an account, at most ${rule.maxNewAccountsPerDay} new a day` : "sign in to the accounts you listed"}, ${file.accounts.length} employer account(s)${wantsMail ? ", Gmail connected" : ""}`, fix: "" };
+  const mail = !!loadGmail(files.gmail) && !!store.get(GMAIL.refreshTokenItem);
+  const how = rule?.mode === "create_if_missing" ? `sign in, or make an account (at most ${rule.maxNewAccountsPerDay} new a day)` : "sign in to the employers you listed";
+  const verify = !wantsMail ? "" : mail ? ", verification emails read from Gmail" : ", you click each verification link (Gmail is not connected)";
+  return { name, ok: true, optional: true, detail: `Workday: ${how}, ${file.accounts.filter((a) => a.mode !== "off").length} employer account(s)${verify}`, fix: "" };
 }
 
 /** One tiny JEV call: proves the key is valid and has credit. */

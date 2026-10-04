@@ -1,7 +1,7 @@
 ---
 name: accounts
-description: Let the tool apply on job boards that want an account (Workday today). Use when the user says /accounts or /account, with or without a subcommand (add, password, gmail, clear, remove), "Workday", "sign in for me", "why are Workday jobs skipped", or asks to connect Gmail for verification emails.
-argument-hint: "[add workday | add <link> | password | gmail <client file> | clear | remove <id or all>]"
+description: Let the tool apply on job boards that want an account (Workday today). Use when the user says /accounts or /account, with or without a subcommand (signin, password, add, setup, clear, off, on, forget, gmail), "Workday", "sign in for me", "why are Workday jobs skipped", or asks about verification emails.
+argument-hint: "[signin <employer> | password <employer> | add workday | setup <employer> | clear | off | on | forget <employer or all> | gmail]"
 model: claude-sonnet-5-5
 effort: medium
 ---
@@ -9,53 +9,73 @@ effort: medium
 # /accounts
 
 The user types a short command; you run the tool for them. They should
-never have to type `npx`. `docs/ACCOUNTS.md` is the reference. Everything
-here is off until the user turns it on.
+never have to type `npx` or edit a file. `docs/ACCOUNTS.md` is the
+reference. Everything here is off until the user turns it on.
+
+There are three ways to use it. **Lead with the first.** Offer the second
+when a session has ended, and the third only when they ask for less work
+per employer, and say that it is experimental.
+
+1. They sign in once at an employer, themselves; the tool keeps the session.
+2. They store that employer's password; the tool signs in when the session ends.
+3. Experimental: the tool makes accounts where they have none.
+
+## `/accounts` with nothing after it
+
+Run `npx jev accounts`. If nothing is set up, this is the guided setup:
+
+1. Say in two sentences what this is: Workday employers each want an
+   account, and the simplest way is to sign in once yourself.
+2. Run `npx jev status` and name the two or three Workday employers with
+   the best jobs they are missing (`npx jev queue` lists skipped jobs with
+   `workday` as the reason; use the companies, not ids).
+3. Ask which one to start with, then do `/accounts signin <employer>`.
+4. After it works, run `npx jev discover` and say how many jobs at that
+   employer are now in the queue. Offer `/apply`.
+
+If something is set up, say what, what waits for them, and the next step.
 
 ## What the user can type
 
 | They type | You do |
 |---|---|
-| `/accounts` | Run `npx jev accounts` and `npx jev gmail status`. Say in two or three sentences what is set up and what the next step is. |
-| `/accounts add workday` | Ask the three questions below unless they already answered, then run `npx jev accounts add workday` with exactly the flags they agreed to. |
-| `/accounts add <link>` | One employer they already have an account with: `npx jev accounts add <link>`. Add `--create` only if they say the tool may make it. |
-| `/accounts password` | Run `npx jev accounts password`. A window opens on their Mac; they type the password there, twice. Tell them to look for the window. You never see it. |
-| `/accounts gmail` | Walk them through "Connect Gmail" in `docs/ACCOUNTS.md` one step at a time until they have the client file. Then `/accounts gmail <file>`. |
-| `/accounts gmail <file>` | Run `npx jev gmail connect --client <file>`. Their browser opens Google's consent page; approving is theirs. |
-| `/accounts clear` | `npx jev accounts status --clear`, after they fixed what paused an account. |
-| `/accounts remove <id or all>` | `npx jev accounts disconnect <id or all>`. `all` also needs `npx jev gmail disconnect` if they want mail access gone. Confirm `all` first. |
+| `/accounts signin <employer>` | Show `npx jev accounts signin <employer>` in a `bash` block. It opens the employer's page in the tool's Chrome window; they sign in there themselves. Tell them to click Run and then look at that window. |
+| `/accounts password <employer>` | Run `npx jev accounts password <employer>`. A window opens on their Mac; they type that employer's password there, twice. You never see it. With no employer it stores the one password they use on accounts they already had. |
+| `/accounts add workday` | The questions below. Run it with `--preview` first and read what it allows back to them. Save only after a yes, with exactly the flags they agreed to. |
+| `/accounts setup <employer>` | Show `npx jev accounts setup <employer>` in a `bash` block. It signs in, or makes the account. They click Run. |
+| `/accounts clear` | `npx jev accounts clear`, after they fixed what paused an account. |
+| `/accounts off` / `/accounts on` | `npx jev accounts off` / `on`. Say that everything set up is kept. |
+| `/accounts forget <employer or all>` | Run it without `--yes` first and read back what it removes. After a yes, run it with `--yes`. Say that the account at the employer still exists. |
+| `/accounts gmail` | Only if they want verification emails read for them. Say first that the default needs no setup: they click the link and type `/resume`. If they still want it, walk through "Verification emails" in `docs/ACCOUNTS.md` one step at a time. Do not promise how long it takes. Then `/accounts gmail <file>` runs `npx jev gmail connect --client <file>`. |
 
 After any of these, run `npx jev accounts` and read the result back.
 
-## The three questions for `add workday`
+## The questions for `add workday`
 
-Each is a separate yes. Ask only what they have not said:
+Say that this is experimental before asking. Each is a separate yes:
 
-1. May the tool **make** an account where an employer has none for you, or
-   only sign in to accounts you have? (`--create`)
-2. May it tick the **account terms** box on a sign-up form? That accepts
-   each employer's candidate-account terms for you. A marketing box is
-   never ticked. (`--terms`)
-3. May it read the **verification email** an employer sends? Read-only
-   Gmail, that one email. Without it you click each link yourself.
-   (`--verify-email`)
+1. May the tool **make** an account where an employer has none for you?
+   Each is a real account at that employer, in your name. (`--create`)
+2. May it tick the box that accepts each employer's **candidate-account
+   terms** for you, without your reading them one by one? A marketing box
+   is never ticked. (`--terms`)
+3. May it read the **verification email** an employer sends? That needs
+   Gmail connected. Without it you click each link. (`--verify-email`)
 
-`--max-new 3` is the default: at most three new accounts a day.
+They choose no password: each new account gets its own random one, kept in
+their Keychain. `--max-new 3` is the default.
 
 ## What you never do
 
 - **Never ask for, read, type or repeat a password, a code or a token**,
-  in chat, in a file or in a command. The password goes into the Mac's own
-  window. Never read the Keychain, `.env` or the tool's Chrome profile.
-- **Never run anything that signs in or signs up at an employer.** That is
-  `apply` on a Workday job, with or without `--dry`, and `daily` or
-  `resume --submit` when Workday is allowed. Show the command in a `bash`
-  block; the app puts a Run button on it, so it is one click for them:
-
-  ```bash
-  npx jev apply <the Workday link> --dry
-  ```
-
+  in chat, in a file or in a command. Never read the Keychain, `.env` or
+  the tool's Chrome profile.
+- **Never start anything that signs in or signs up at an employer.** That
+  is `accounts signin`, `accounts setup`, `apply` on a Workday job in a
+  real run, `daily` and `resume --submit` when Workday is set up. Show the
+  command in a `bash` block; the app puts a Run button on it. A rehearsal
+  (`--dry`) of a Workday job signs in to an account they have and makes
+  nothing; treat it the same way.
 - **Never pass a human check**: a CAPTCHA, a phone code, a passkey, or the
   code a board emails because it suspects a robot.
 - **Never allow more than they said.** No flag they did not agree to, and
@@ -63,19 +83,16 @@ Each is a separate yes. Ask only what they have not said:
 - If the permission system declines a command, do not try another way.
   Show the command in a `bash` block for them to run with one click.
 
-## The first Workday job
+## When a sign-in stops
 
-Once the password is stored, run `npx jev discover` so Workday jobs enter
-the queue, and say how many did. Then give them the first rehearsal to
-start themselves (the block above). Say plainly: it sends no application,
-but it signs in for real and makes the account if there is none. Ask them
-to paste what it printed; it holds no secret. Workday's application pages
-were not seen while the tool was built, so a first form may hold on a
-page. Each held field names what to fix.
+The reason is on the job's row (`/status`). In their words:
 
-## When something waits for the user
-
-A paused account (a refused password, a lockout, a sign-in that went
-nowhere) stays paused until they sign in themselves in the tool's Chrome
-window, or fix it and type `/accounts clear`. Forms that wait are listed
-by `/status`; `/resume` picks them up.
+- **The employer refused the password.** Either they sign in themselves in
+  the tool's Chrome window, or they type `/accounts password <employer>`
+  with the right one. Then `/resume`.
+- **A robot check, a phone code, a passkey, single sign-on.** They do it
+  in the tool's window. Then `/resume`.
+- **A verification email.** They click its link in their own mail. Then
+  `/resume`.
+- **No account there, in a rehearsal.** `/accounts setup <employer>`, or
+  `/accounts signin <employer>` to make it themselves.

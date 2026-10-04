@@ -11,6 +11,27 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Changed (accounts, after a review of the first design)
+- **Sign in once yourself** is now the default way: `accounts signin
+  <employer>` opens the employer's page in the tool's window, you sign in,
+  and the tool keeps the session. No password, no Gmail, no flags.
+- **A password per employer.** A new account gets its own random password,
+  made by the tool and kept in the Keychain; `accounts password
+  <employer>` stores the one for an account you already had. The single
+  shared password is no longer needed.
+- **A rehearsal never makes an account** and never asks for a verification
+  email. `accounts setup <employer>` is the one command that does.
+- `accounts add` says in plain words what it allows before it saves, and
+  `--preview` shows that without saving. `add <link> --off` leaves one
+  employer alone whatever the rule says.
+- `accounts off` and `on` switch every sign-in off and on with everything
+  kept. `accounts forget <employer or all>` removes the entry, its
+  password and its session from this Mac. Neither deletes the account at
+  the employer. `disconnect` is gone.
+- Making accounts and reading verification mail are marked experimental,
+  and `docs/ACCOUNTS.md` no longer says Google requires a client per
+  person: that is this project's choice until it has a reviewed one.
+
 ### Added (short commands)
 - Every action has a slash command, so nobody has to type `npx`:
   `/accounts`, `/accounts add workday`, `/accounts password`,

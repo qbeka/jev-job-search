@@ -4,6 +4,7 @@
  * accident, and it never travels in a command's arguments, where another process could read it.
  */
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { randomInt } from "node:crypto";
 import { ACCOUNTS, childEnv } from "../config.js";
 import { Secret } from "../util/redact.js";
 
@@ -87,6 +88,26 @@ export class MemoryStore implements SecretStore {
   delete(name: string): void {
     this.values.delete(name);
   }
+}
+
+/** The Keychain item that holds one employer account's own password. */
+export const itemFor = (accountId: string) => `account:${accountId}`;
+
+/**
+ * A new random password for one employer account: long, with every kind of character a board asks
+ * for. Each account gets its own, so nothing is shared between employers and the person has no
+ * password to think of.
+ */
+export function generatePassword(): Secret {
+  const sets = ["abcdefghijkmnopqrstuvwxyz", "ABCDEFGHJKLMNPQRSTUVWXYZ", "23456789", "!@#$%*-_=+"];
+  const pick = (from: string) => from[randomInt(from.length)] as string;
+  const chars = [...sets.map(pick), ...Array.from({ length: ACCOUNTS.generatedLength - sets.length }, () => pick(sets.join("")))];
+  // Shuffled, so the four that were forced are not always in front.
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j] as string, chars[i] as string];
+  }
+  return new Secret(chars.join(""));
 }
 
 export const defaultStore = (): SecretStore => (process.platform === "darwin" ? new KeychainStore() : new EnvStore());

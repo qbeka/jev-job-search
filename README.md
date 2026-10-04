@@ -99,7 +99,7 @@ A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like
 - **`/report`** opens a dashboard on your own machine: applications sent, today, waiting for you, left for you; sent per day and per board; every job with its status, which you can change by hand, and a notes box per row. `npx jev report --static applications/report.html` writes a snapshot page to keep. Nothing leaves your machine.
 - **`/expand`** reads the public places your profile already links to (your GitHub repositories, your portfolio site) and proposes projects, skills and facts that are missing from the profile, each with its source. Nothing is added without your yes.
 - **`/add-source`** adds a job board or a public list as a source: it inspects the site, writes the source in the shape of the shipped ones, tests it on a captured sample and runs one live query before registering it.
-- **`/accounts`** lets the tool apply on Workday, where every employer wants its own account. `/accounts add workday` asks what it may do, one thing at a time: sign in to accounts you have, make one where there is none, tick the account terms, read the verification email. `/accounts password` opens a window on your Mac where you type the one password; it goes into your Keychain. Off until you turn it on. See [Jobs that want an account](#jobs-that-want-an-account).
+- **`/accounts`** lets the tool apply on Workday, where every employer wants its own account. The simple way: `/accounts signin <employer>` opens that employer's page, you sign in once yourself, and the tool keeps the session. Storing a password, and letting the tool make accounts for you (experimental), are there when you want them. Off until you turn it on. See [Jobs that want an account](#jobs-that-want-an-account).
 - **`/daily`** is the daily run: a few applications a day with nobody watching, inside a standing policy you write (how many, where, which employers never) and limits meant to look like one careful person: 15 a day, one per employer, minutes between two applications to one board, a full stop when boards start asking for a human check. `/daily dry` rehearses it, `/daily run` runs today's, and `/daily schedule 09:00` makes it run by itself; nothing is scheduled until you type that. See [docs/DAILY.md](docs/DAILY.md).
 - **`/resume`** picks up the forms that wait for you. A board that emails a code, shows a robot check or needs a sign-in only you can finish leaves its form open in the tool's window; you do that one thing there, type `/resume`, and the application is recorded. It also settles a form whose Submit was clicked with no confirmation seen, which is never sent twice.
 - **`/status`** says where you stand in a few lines: sent today and in total, what waits for you, what is left for you and why, how fresh the queue is, what it has cost, and the next step.
@@ -115,7 +115,7 @@ Every skill runs a command you can also type yourself, as `npx jev <command>` fr
 | `/apply`, `/apply <link>` | `npx jev apply --count 10 --submit`, `npx jev apply <link> --submit` |
 | `/tailor <job id>` | `npx jev tailor <job id> --cover` |
 | `/report` | `npx jev report --open` |
-| `/accounts`, `/accounts add workday`, `/accounts password` | `npx jev accounts`, `npx jev accounts add workday --create --terms --verify-email`, `npx jev accounts password` |
+| `/accounts`, `/accounts signin acme`, `/accounts password acme` | `npx jev accounts`, `npx jev accounts signin acme`, `npx jev accounts password acme` |
 | `/daily dry`, `/daily run`, `/daily schedule 09:00`, `/daily stop` | `npx jev daily --dry`, `npx jev daily`, `npx jev schedule install --at 09:00`, `npx jev schedule remove` |
 | `/resume` | `npx jev resume`, `npx jev reconcile` |
 | `/status` | `npx jev status`, `npx jev doctor`, `npx jev cost`, `npx jev log` |
@@ -248,16 +248,17 @@ Jobs come from public lists on GitHub (the SimplifyJobs internship and new-grad 
 
 ### Jobs that want an account
 
-Every employer on Workday keeps its own accounts, and that is a large share of all postings. Two commands turn this on:
+Every employer on Workday keeps its own accounts, and that is a large share of all postings. The tool skips them until you set an employer up, and there are three ways, from the simplest:
 
 ```
-/accounts add workday
-/accounts password
+/accounts signin acme
 ```
 
-The first asks what the tool may do, and each part is a separate yes: sign in on Workday, make an account where an employer has none for you (at most 3 new a day), tick the account terms box, read the verification email. Say no to one and that part stays yours. The second opens a window on your Mac where you type the one password your job-board accounts use, twice. It goes into the Keychain and is never shown, saved in a file, or sent to Claude or JEV.
+1. **You sign in once.** That employer's page opens in the tool's Chrome window and you sign in yourself, however it asks. The tool keeps the session and fills that employer's forms from then on. Nothing else is stored.
+2. **It signs in for you.** `/accounts password acme` opens a window on your Mac for that employer's password. It goes into your Keychain, and the tool signs in when the session has ended. A password an employer refuses is never tried twice.
+3. **It makes accounts (experimental).** `/accounts add workday` asks whether the tool may make an account where you have none, accept the account terms, and read the verification email, and shows what that allows before it saves. Each new account gets its own random password in your Keychain. A rehearsal never makes one.
 
-A wrong password is never tried twice: that account is left alone until you sign in yourself. A robot check, a phone code, a passkey and single sign-on stop the job with the page left open for you; `/resume` carries on once you are through. A run that signs in at an employer is always started by you: Claude shows the command with a Run button and does not press it for you. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
+A robot check, a phone code, a passkey and single sign-on stop the job with the page left open for you; `/resume` carries on once you are through. `/accounts off` stops every sign-in, and `/accounts forget all` removes the stored passwords and sessions from your Mac. Neither deletes an account at an employer. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
 
 ### Which jobs it keeps
 
@@ -300,8 +301,9 @@ npx jev templates --use mine
   interview or test slot, the tool leaves it for you.
 - **It will not sign in or create an account unless you set that up.**
   Without `/accounts`, a job behind a sign-in goes on your by-hand list.
-  With it, the tool signs in on Workday only, never retries a wrong
-  password, and never ticks a marketing box.
+  With it, the tool signs in on Workday only, never retries a refused
+  password, never makes an account in a rehearsal, and never ticks a
+  marketing box.
 - **It will not pass a "prove you are human" test for you.** That covers
   picture puzzles and the codes a board emails you because it suspects a
   robot.

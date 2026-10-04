@@ -123,10 +123,10 @@ export const endIfAbandoned = () => {
  * back as blocked. A fill that runs out of time is stopped: its tab is closed, which fails every
  * call it was waiting on, and its signal keeps it from writing a plan or a report over the next attempt.
  */
-async function fillOnce(jev: JevClient, profile: Profile, e: QueueEntry): Promise<FillReport> {
+async function fillOnce(jev: JevClient, profile: Profile, e: QueueEntry, dry = false): Promise<FillReport> {
   const attempt = new AbortController();
   let timer: NodeJS.Timeout | undefined;
-  const filling = fillJob(jev, profile, asJob(e), { signal: attempt.signal });
+  const filling = fillJob(jev, profile, asJob(e), { signal: attempt.signal, dry });
   filling.catch(() => undefined);
   try {
     // A form behind a sign-in gets longer: the sign-in and its verification email take their own time.
@@ -456,7 +456,7 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
   };
   await paced(entries, (e) => hostOf(applyUrlFor(asJob(e))), async (e) => {
     prefetch(entries.indexOf(e));
-    const first = await fillOnce(jev, profile, e);
+    const first = await fillOnce(jev, profile, e, o.dry);
     reports[entries.indexOf(e)] = first;
     const rest = (async () => {
       const r = o.fillOnly ? first : await writer(() => walk(jev, profile, e, first, o));
@@ -475,7 +475,7 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
   // checker, for one. With five forms side by side no tab keeps it for long. These forms are filled again, one at a time.
   for (const e of again) {
     try {
-      const first = await fillOnce(jev, profile, e);
+      const first = await fillOnce(jev, profile, e, o.dry);
       await finish(e, o.fillOnly ? first : await walk(jev, profile, e, first, o));
     } catch (err) {
       console.log(`${e.job.id}  ${err instanceof Error ? err.message : String(err)}`);

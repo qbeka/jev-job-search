@@ -13,7 +13,7 @@ import type { WaitingFor } from "../jobs/queue.js";
 import { Secret } from "../util/redact.js";
 import { dayOf, loadAccounts, loadState, mutateAccounts, mutateState, PAUSED, stateOf, type Account, type ProviderRule } from "./config.js";
 import type { Adapter, AuthPage, AuthSnapshot, Verifier } from "./provider.js";
-import { passwordProblems, type SecretStore } from "./secrets.js";
+import { generatePassword, itemFor, type SecretStore } from "./secrets.js";
 
 export type AuthContext = {
   adapter: Adapter;
@@ -25,6 +25,8 @@ export type AuthContext = {
   verifier: Verifier | null;
   files?: { accounts?: string; state?: string };
   now?: () => Date;
+  /** True in a rehearsal: an account the person has is signed in to, and nothing is made or asked for. */
+  rehearsal?: boolean;
 };
 
 export type AuthStop = {
@@ -94,13 +96,19 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
   const mayRegister = () => !known() && (account ? account.mode === "create_if_missing" : rule?.mode === "create_if_missing");
   const terms = account ?? rule;
   const stop = (status: AuthStop["status"], waitingFor: WaitingFor | null, reason: string): AuthStop => ({ ok: false, status, waitingFor, reason, steps });
-  if (!terms) return stop("login_required", "login", `no account is set up for ${ctx.tenant.tenant}. To allow one: npx jev accounts add`);
+  if (!file.enabled) return stop("login_required", "login", "sign-ins are switched off. To switch them on again: /accounts on");
+  if (account?.mode === "off") return stop("login_required", "login", `you told the tool to leave ${ctx.tenant.tenant} alone`);
+  if (!terms) return stop("login_required", "login", `no account is set up for ${ctx.tenant.tenant}. To set one up: /accounts`);
   if (account && !account.allowedOrigins.includes(ctx.tenant.origin)) return stop("login_required", "login", `the account for ${ctx.tenant.tenant} is not allowed on ${ctx.tenant.origin}`);
   const allowed = account?.allowedOrigins ?? [ctx.tenant.origin];
   const email = terms.email;
-  const password = secretOf(ctx.secrets, terms.secret);
-  if (!password) return stop("login_required", "login", "no password is stored for your job-board accounts. Set one: npx jev accounts password");
-  if (state().pausedUntil) return stop("awaiting_user_action", "login", `${state().pausedWhy ?? "the account is paused"}. Nothing is tried again until you sign in yourself in the tool's window, or fix it and run: npx jev accounts status --clear`);
+  if (!email) return stop("login_required", "login", "no address is set for your job-board accounts. To set one up: /accounts");
+  const own = itemFor(id);
+  /** The password for this employer: its own, or the one the person stored for accounts they already had. Null when there is none: then only a session the person started is used. */
+  const stored = (): Secret | null => ctx.secrets.get(own) ?? secretOf(ctx.secrets, terms.secret);
+  /** True when this pass put a new password in the store for an account it is about to make. */
+  let madePassword = false;
+  const pausedStop = () => stop("awaiting_user_action", "login", `${state().pausedWhy ?? "the account is paused"}. Nothing is tried again until you sign in yourself in the tool's window, or store the right password (/accounts password ${ctx.tenant.tenant}) and lift the pause (/accounts clear)`);
 
   const read = (): Promise<AuthSnapshot> => page.read(adapter.controls, adapter.words);
   const click = async (selector: string, what: string) => {
@@ -155,6 +163,9 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
       f.accounts = [...f.accounts.filter((a) => a.id !== id), ...(was ? [was] : [])];
     }, ctx.files?.accounts);
     setState({ pendingSince: null });
+    // The password made for an account that does not exist is of no use to anyone.
+    if (madePassword) ctx.secrets.delete(own);
+    madePassword = false;
     account = was;
     created = false;
     sign = null;
@@ -180,10 +191,12 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
       }
       const view = adapter.view(s);
       steps.push(`page: ${view}`);
+      // A paused account is touched only to use a session the person started themselves.
+      if (view !== "signed_in" && state().pausedUntil) return pausedStop();
 
       if (view === "signed_in") {
         const who = adapter.identity(s);
-        if (who && who !== email.toLowerCase()) return stop("awaiting_user_action", "login", "the tool's window is signed in to this employer with another address. Sign out there, then run: npx jev resume");
+        if (who && who !== email.toLowerCase()) return stop("awaiting_user_action", "login", "the tool's window is signed in to this employer with another address. Sign out there, then: /resume");
         made();
         account = saveAccount({});
         const at = now().toISOString();
@@ -216,6 +229,8 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         const today = dayOf(now());
         const tries = state().attempts;
         if (tries.day === today && tries.count >= ACCOUNTS.maxLoginAttempts) return stop("awaiting_user_action", "login", `the tool tried to sign in ${tries.count} times today and leaves the account alone until tomorrow. Sign in yourself in the tool's window`);
+        const password = stored();
+        if (!password) return stop("awaiting_user_action", "login", `no password is stored for ${ctx.tenant.tenant}, so the tool only uses a session you started. Sign in yourself in the tool's window, or store this employer's password: /accounts password ${ctx.tenant.tenant}`);
         triedLogin = true;
         await enter(page, adapter.controls.email, email, allowed, "text");
         await enter(page, adapter.controls.password, password, allowed, "password");
@@ -227,7 +242,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         steps.push(`sign-in: ${result}`);
         if (result === "wrong_password") {
           pause("the board refused the stored password");
-          return stop("awaiting_user_action", "login", "the board refused the stored password. Nothing was retried. Sign in yourself in the tool's window, or set the right password: npx jev accounts password");
+          return stop("awaiting_user_action", "login", `the board refused the stored password. Nothing was retried. Sign in yourself in the tool's window, or store this employer's password (/accounts password ${ctx.tenant.tenant}), then: /resume`);
         }
         if (result === "locked") {
           pause("the board says the account is locked");
@@ -251,14 +266,21 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
           await click(adapter.controls.toSignIn, "Sign In");
           continue;
         }
-        if (!mayRegister()) return stop("login_required", "login", `no account is set up for ${ctx.tenant.tenant}. To allow one: npx jev accounts add`);
+        if (!mayRegister()) return stop("login_required", "login", `no account is set up for ${ctx.tenant.tenant}. To set one up: /accounts`);
         if (triedRegister) return stop("awaiting_user_action", "login", "the sign-up did not go through. Look at it in the tool's window");
+        if (ctx.rehearsal) return stop("queued", null, `a rehearsal makes no account. ${ctx.tenant.tenant} has none for you yet: to make it first, run /accounts setup ${ctx.tenant.tenant}`);
         const today = dayOf(now());
         const limit = rule?.maxNewAccountsPerDay ?? ACCOUNTS.maxNewAccountsPerDay;
         if ((loadState(ctx.files?.state).created[today] ?? 0) >= limit) return stop("queued", null, `today's limit of ${limit} new accounts is reached. This job waits for another day`);
-        if (s.present.terms && !terms.agreements.includes("account_terms")) return stop("awaiting_user_action", "agreement", "the sign-up asks you to accept the account terms, which you have not approved for the tool. Accept them yourself in the tool's window, or allow it: npx jev accounts add");
-        const problems = passwordProblems(password);
-        if (problems.length) return stop("login_required", "login", `the stored password cannot be used for a new account: it needs ${problems.join(", ")}. Choose another: npx jev accounts password`);
+        if (s.present.terms && !terms.agreements.includes("account_terms")) return stop("awaiting_user_action", "agreement", "the sign-up asks you to accept the account terms, which you have not approved for the tool. Accept them yourself in the tool's window, then: /resume");
+        // Every new account gets a password of its own, made here and kept in the Keychain before anything is typed.
+        // A run that died after its click left one behind: the account may have been made with it, so it is the one used.
+        const kept = leftBehind ? ctx.secrets.get(own) : null;
+        const password = kept ?? generatePassword();
+        if (!kept) {
+          ctx.secrets.set(own, password);
+          madePassword = true;
+        }
         triedRegister = true;
         await enter(page, adapter.controls.email, email, allowed, "text");
         await enter(page, adapter.controls.password, password, allowed, "password");
@@ -271,7 +293,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         // From this click on the account may exist. That is written down first, as not yet known, so a run that dies
         // here leaves a note and not a claim: the next run signs up again and the board says if the account is there.
         sign = { before: account, day: today, at: now() };
-        account = saveAccount({ mode: "create_if_missing" });
+        account = saveAccount({ mode: "create_if_missing", secret: { keychain: own } });
         counted(today, 1);
         setState({ pendingSince: sign.at.toISOString() });
         created = true;
@@ -283,9 +305,12 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
           // The board already has an account for this address. It is signed in to, once, like any other.
           counted(today, -1);
           setState({ pendingSince: null });
+          // The password made a moment ago is not that account's. One kept from an earlier run may be.
+          if (madePassword) ctx.secrets.delete(own);
+          madePassword = false;
           sign = null;
           created = false;
-          account = saveAccount({ mode: "existing_only", createdAt: null });
+          account = saveAccount({ mode: "existing_only", createdAt: null, secret: terms.secret });
           continue;
         }
         if (result === "challenge") {
@@ -294,7 +319,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         }
         if (result === "password_refused") {
           notMade();
-          return stop("awaiting_user_action", "login", "the board refused the password for a new account: it does not meet this employer's rules. Choose another: npx jev accounts password");
+          return stop("awaiting_user_action", "login", "the board refused the password the tool made for a new account: this employer's rules differ. Make the account yourself in the tool's window, then: /resume");
         }
         if (result === "unclear") {
           notMade();
@@ -307,8 +332,9 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         // The board asks for the address to be proven, so the account is there.
         made();
         if (verified) return stop("awaiting_email_verification", "email_link", "the verification email was used and the board still asks for it. Look at the tool's window");
-        if (!terms.emailVerification) return stop("awaiting_email_verification", "email_link", "the board mailed you a link to prove the address is yours, and you have not let the tool read that mail. Click the link yourself, then run: npx jev resume");
-        if (!ctx.verifier) return stop("awaiting_email_verification", "email_link", "the board mailed you a link to prove the address is yours, and no mailbox is connected. Click the link yourself, or connect Gmail (npx jev gmail connect), then run: npx jev resume");
+        if (ctx.rehearsal) return stop("queued", null, `${ctx.tenant.tenant} wants your address proven first, and a rehearsal asks for no email. To do it: /accounts setup ${ctx.tenant.tenant}`);
+        if (!terms.emailVerification) return stop("awaiting_email_verification", "email_link", "the board mailed you a link to prove the address is yours, and you have not let the tool read that mail. Click the link yourself, then: /resume");
+        if (!ctx.verifier) return stop("awaiting_email_verification", "email_link", "the board mailed you a link to prove the address is yours, and no mailbox is connected. Click the link yourself, then: /resume");
         // A sign-up from this pass, or from a run that died minutes ago, is when the email was asked for.
         const earlier = account?.createdAt ?? leftBehind;
         const recent = earlier && now().getTime() - Date.parse(earlier) < GMAIL.requestTtlMs ? new Date(earlier) : null;
@@ -321,7 +347,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
           await page.wait(ACCOUNTS.stepMs);
           found = await ctx.verifier.find({ ...request(), since: askedAt });
         }
-        if (!found.ok) return stop("awaiting_email_verification", "email_link", `${found.why}. Click the link in the board's email yourself, then run: npx jev resume`);
+        if (!found.ok) return stop("awaiting_email_verification", "email_link", `${found.why}. Click the link in the board's email yourself, then: /resume`);
         verified = true;
         if (found.link) {
           const went = await page.follow(found.link, allowed);
@@ -336,7 +362,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
           await click(adapter.controls.sendCode, "Verify");
           steps.push("typed the verification code");
         } else {
-          return stop("awaiting_email_verification", "email_link", "the board's email held nothing the tool can use. Follow it yourself, then run: npx jev resume");
+          return stop("awaiting_email_verification", "email_link", "the board's email held nothing the tool can use. Follow it yourself, then: /resume");
         }
         // The address is proven: one sign-in is allowed again.
         triedLogin = false;

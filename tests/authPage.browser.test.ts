@@ -15,7 +15,7 @@ import { cdpAuthPage } from "../src/accounts/authPage.js";
 import { setRule } from "../src/accounts/commands.js";
 import { loadAccounts } from "../src/accounts/config.js";
 import type { Adapter, AuthPage, Verifier } from "../src/accounts/provider.js";
-import { MemoryStore } from "../src/accounts/secrets.js";
+import { itemFor, MemoryStore } from "../src/accounts/secrets.js";
 import { workday } from "../src/accounts/workday.js";
 import { Page, sleep, type Target } from "../src/browser/cdp.js";
 import { dump, goto } from "../src/browser/session.js";
@@ -76,15 +76,18 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the sign-in in a real browser"
     const auth: AuthPage = { ...cdpAuthPage(page), wait: () => sleep(120) };
     const ctx = (verifier: Verifier | null = null): AuthContext => ({ adapter, tenant: { tenant: "acme", origin: board.origin }, applicationUrl: board.applyUrl, secrets: store, verifier, files });
     await goto(page, board.applyUrl);
-    return { board, page, auth, ctx, files };
+    return { board, page, auth, ctx, files, store };
   }
 
   it("makes an account with real clicks and keys, and lands in the application", async () => {
-    const { board, page, auth, ctx, files } = await open();
+    const opened = await open();
+    const { board, page, auth, ctx, files } = opened;
     const r = await ensureSignedIn(auth, ctx());
     expect(r.ok && r.created).toBe(true);
     // The board holds exactly what was typed, the terms were ticked, and the news box was left alone.
-    expect(board.accounts.get(EMAIL)).toEqual({ password: PASSWORD, verified: true });
+    const own = opened.store.values.get(itemFor("workday:acme")) ?? "";
+    expect(own).toHaveLength(ACCOUNTS.generatedLength);
+    expect(board.accounts.get(EMAIL)).toEqual({ password: own, verified: true });
     expect(loadAccounts(files.accounts).accounts[0]).toMatchObject({ id: "workday:acme", allowedOrigins: [board.origin] });
     // The application's fields are read by Workday's own names, and a one-time-code box is never read.
     const d = await dump(page);

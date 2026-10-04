@@ -347,6 +347,8 @@ export const ACCOUNTS = {
   keychainService: "jev-job-search",
   /** The one password used for employer accounts, set with `jev accounts password`. */
   passwordItem: "accounts-password",
+  /** How long a password the tool makes for a new account is. */
+  generatedLength: 24,
   /** How long the window that asks for the password waits for the person, in seconds, and how many times it asks again after a password that misses a rule. */
   askSeconds: 300,
   askRounds: 3,
