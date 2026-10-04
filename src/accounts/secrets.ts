@@ -32,10 +32,13 @@ export class KeychainStore implements SecretStore {
   }
 
   set(name: string, value: Secret): void {
-    // The value goes in on standard input, as a command to `security -i`, never as an argument.
+    // The value goes in on standard input, as one command line to `security -i`, never as an argument.
+    // A line break would end that line and start another command, so a value with one is refused.
+    if (/[\x00-\x1f\x7f]/.test(value.reveal())) throw new Error(`the value for ${name} holds a character the Keychain command cannot take`);
     const quoted = `"${value.reveal().replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
     const r = this.run(["-i"], { input: `add-generic-password -U -s "${this.service}" -a "${name}" -w ${quoted}\n` });
-    if (r.status !== 0) throw new Error(`the Keychain did not take ${name}`);
+    // The command's own exit code says little, so the item is read back.
+    if (r.status !== 0 || this.get(name)?.reveal() !== value.reveal()) throw new Error(`the Keychain did not take ${name}`);
   }
 
   setByPerson(name: string): boolean {
@@ -93,6 +96,8 @@ export function passwordProblems(password: Secret): string[] {
   const p = password.reveal();
   const r = ACCOUNTS.passwordRules;
   const out: string[] = [];
+  // The Keychain hands back anything else in another form, which would then be typed as the password.
+  if (/[^\x21-\x7e]/.test(p)) out.push("only letters, digits and symbols from a plain keyboard, with no spaces");
   if (p.length < r.minLength) out.push(`at least ${r.minLength} characters`);
   if (r.digit && !/\d/.test(p)) out.push("a digit");
   if (r.lower && !/[a-z]/.test(p)) out.push("a lower-case letter");

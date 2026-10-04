@@ -6,7 +6,7 @@
  * a time, and submissions go one at a time with a pause per site.
  */
 import { ACCOUNTS, RUN } from "../config.js";
-import { accountGate, adapterFor } from "../accounts/capability.js";
+import { accountGate, adapterFor, capabilityFor } from "../accounts/capability.js";
 import { signedInNow } from "../accounts/gate.js";
 import { ensureBrowser, sleep } from "../browser/cdp.js";
 import { fillJob, nextPage, resolveJob, shouldAdvance } from "../browser/formRunner.js";
@@ -299,24 +299,41 @@ export async function reconcile(jev: JevClient, id: string): Promise<"applied" |
  * Watches a form that waits on the person while they finish it, and records the application when
  * the confirmation shows. Nothing is typed or clicked. A form whose tab is gone goes to the by-hand list.
  */
-export async function resume(jev: JevClient, id: string, opts: { stop?: () => boolean } = {}): Promise<"applied" | "still_waiting" | "gone" | "signed_in"> {
+export async function resume(jev: JevClient, id: string, opts: { stop?: () => boolean } = {}): Promise<"applied" | "still_waiting" | "gone" | "signed_in" | "retry"> {
   if (!(await hasOpenTab(id))) {
     record(id, "needs_review", "the form that was left open for you is closed. Apply by hand, or run: npx jev apply " + id + " --submit");
     return "gone";
   }
   if (waitsAtSignIn(id)) {
     // The job waits at a sign-in. Once the tab shows the application, the job goes back to the queue to be filled.
-    const url = applyUrlFor(asJob(loadQueue().entries.find((e) => e.job.id === id) as QueueEntry));
+    const entry = loadQueue().entries.find((e) => e.job.id === id) as QueueEntry;
+    const url = applyUrlFor(asJob(entry));
+    const seen = async () => {
+      const page = await pageFor(id);
+      try {
+        return await signedInNow(page, url).catch(() => false);
+      } finally {
+        page.close();
+      }
+    };
+    if (await seen()) {
+      record(id, "queued", null);
+      return "signed_in";
+    }
+    // What the person did somewhere else (a link clicked in their own mail, a sign-out) never shows in this tab.
+    // The sign-in is the only thing that can find it out, so it is run again, unless the account is paused.
+    const elsewhere = entry.status === "awaiting_email_verification" || entry.waitingFor === "email_link" || entry.waitingFor === "login";
+    if (elsewhere && capabilityFor(url)?.verdict === "can") {
+      record(id, "queued", null);
+      return "retry";
+    }
     const deadline = Date.now() + RUN.resumeWaitMs;
     while (Date.now() < deadline && !opts.stop?.()) {
-      const page = await pageFor(id);
-      const there = await signedInNow(page, url).catch(() => false);
-      page.close();
-      if (there) {
+      await sleep(ACCOUNTS.stepMs);
+      if (await seen()) {
         record(id, "queued", null);
         return "signed_in";
       }
-      await sleep(ACCOUNTS.stepMs);
     }
     return "still_waiting";
   }

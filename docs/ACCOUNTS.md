@@ -117,7 +117,9 @@ npx jev resume --submit
 ```
 
 `resume` sees that you are signed in, fills the form and, with `--submit`,
-sends it when it is ready. Without `--submit` it fills and stops.
+sends it when it is ready. Without `--submit` it fills and stops. For a
+verification link you clicked in your own mail, `resume` signs in again to
+see that the address is proven.
 
 A code a board emails **because it suspects a robot** (Greenhouse does this
 after several applications) is a human check, not an account verification.
@@ -130,7 +132,7 @@ The tool never reads or types that code, with or without Gmail connected.
 | New employer accounts per day | 3, or what you set with `--max-new` |
 | Jobs per new employer in one run | 1 |
 | Sign-in tries per account per day | 3. A wrong password is never retried |
-| After a refused password or a lockout | the account is left alone for 24 hours, or until `npx jev accounts status --clear` |
+| After a refused password, a lockout, or a sign-in that did not go through | the account is left alone until you sign in yourself in the tool's window, or run `npx jev accounts status --clear`. Nothing is retried on a timer |
 | Verification emails per sign-up | 1, and one request to send it again |
 
 They are in `ACCOUNTS` and `GMAIL` in `src/config.ts`.
@@ -235,7 +237,8 @@ Said plainly, because nobody should find this out on a real application:
 - **Not tested: a real sign-in.** No real account was made or signed in to
   while this was built. What Workday says after a wrong password, a
   lockout or a duplicate sign-up is matched by wording, and wording the
-  tool does not recognise stops the job for you. It never guesses.
+  tool does not recognise stops the job for you and pauses that account.
+  It never guesses and never tries again by itself.
 - **Not tested: Workday's application pages.** They cannot be seen without
   an account. The form filler treats them like any other form and holds
   whatever it cannot fill and read back. Expect the first rehearsals to

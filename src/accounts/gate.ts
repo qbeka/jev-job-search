@@ -37,7 +37,7 @@ export async function signedInNow(page: Page, applicationUrl: string): Promise<b
   const id = accountId(found.adapter.provider, found.tenant.tenant);
   const at = new Date().toISOString();
   mutateState((st) => {
-    st.accounts[id] = { ...stateOf(st, id), knownSince: stateOf(st, id).knownSince ?? at, lastLoginAt: at, pausedUntil: null, pausedWhy: null };
+    st.accounts[id] = { ...stateOf(st, id), knownSince: stateOf(st, id).knownSince ?? at, lastLoginAt: at, pausedUntil: null, pausedWhy: null, pendingSince: null };
   });
   return true;
 }

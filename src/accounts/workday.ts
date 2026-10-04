@@ -12,7 +12,10 @@ const id = (name: string) => `[data-automation-id="${name}"]`;
 
 // An account or an address that has to be verified or activated. "Verify New Password" is a box on the sign-up form, not this.
 const VERIFY = /\b(account|e-?mail|address)\b[^.]{0,80}\b(verif|activat)|\b(verif|activat)\w*\b[^.]{0,80}\b(account|e-?mail|address)\b/i;
-const LOCKED = /locked|too many|temporarily (disabled|unavailable)|try again later/i;
+// "Try again later" alone is not a lockout: a page says that about any hiccup.
+const LOCKED = /\block(ed|out)\b|too many (failed )?(attempts|tries|sign-?ins|log-?ins)|temporarily (disabled|suspended)|\b(disabled|suspended)\b[^.]{0,30}\baccount|\baccount\b[^.]{0,30}\b(disabled|suspended)/i;
+// Any message about the password or the credentials after a click on Sign In is a refusal, however it is worded.
+const ABOUT_PASSWORD = /\b(password|credentials|user ?name)\b/i;
 // The board refusing the address or the password, in so many words. "Something went wrong" is not that.
 const WRONG = /\b(invalid|incorrect|wrong)\b[^.]{0,40}\b(user ?name|e-?mail|address|password|credentials|log-?in|sign-?in)|\b(user ?name|e-?mail|address|password|credentials)\b[^.]{0,40}\b(is|are|was)? ?(invalid|incorrect|wrong|not recogni[sz]ed)|(does not|doesn['’]t|do not|don['’]t) match/i;
 const EXISTS = /already (exists|registered|in use|been used|have an account)|account (already )?exists|existing account/i;
@@ -77,8 +80,9 @@ export const workday: Adapter = {
   view(s: AuthSnapshot) {
     const p = s.present;
     if (p.robot || ROBOT.test(s.errors.join(" "))) return "challenge";
-    // The board says the address must be proven first, on whatever form it says it.
-    if (VERIFY.test(s.errors.join(" "))) return "verify_email";
+    // The board says the address must be proven first, on whatever form it says it. A message that
+    // also speaks of the password is a refused sign-in, not this.
+    if (VERIFY.test(s.errors.join(" ")) && !ABOUT_PASSWORD.test(s.errors.join(" "))) return "verify_email";
     if (p.signIn && p.password) return "sign_in";
     if (p.register && p.password) return "register";
     if (p.withEmail) return "method";
@@ -92,9 +96,9 @@ export const workday: Adapter = {
   afterSignIn(s) {
     const said = s.errors.join(" ");
     if (this.view(s) === "challenge") return "challenge";
-    if (VERIFY.test(said)) return "verify_email";
     if (LOCKED.test(said)) return "locked";
-    if (WRONG.test(said)) return "wrong_password";
+    if (WRONG.test(said) || ABOUT_PASSWORD.test(said)) return "wrong_password";
+    if (VERIFY.test(said)) return "verify_email";
     return s.errors.length ? "unclear" : "moved_on";
   },
 

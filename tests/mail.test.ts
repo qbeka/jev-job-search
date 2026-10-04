@@ -6,7 +6,7 @@ import type { VerificationRequest } from "../src/accounts/provider.js";
 import { MemoryStore } from "../src/accounts/secrets.js";
 import { workday } from "../src/accounts/workday.js";
 import { GMAIL } from "../src/config.js";
-import { connect, disconnect, gmailClient, loadGmail, toMail } from "../src/mail/gmail.js";
+import { connect, disconnect, gmailClient, loadGmail, senderOf, toMail } from "../src/mail/gmail.js";
 import { loadUsed, mailVerifier, queryFor, senderVerified, usable, whyNot, type Mail, type MailClient } from "../src/mail/verification.js";
 import { scrub } from "../src/util/redact.js";
 
@@ -40,6 +40,25 @@ describe("which email is the one that was asked for", () => {
     expect(whyNot(mail({ auth: ["mx.google.com; dkim=fail header.i=@myworkday.com; dmarc=fail header.from=myworkday.com"] }), req(), NOW)).toMatch(/could not be verified/);
     // A pass for some other domain says nothing about this sender.
     expect(senderVerified(mail({ auth: ["mx.google.com; dkim=pass header.i=@evil.example; dmarc=pass header.from=evil.example"] }), workday.mail.senders)).toBe(false);
+  });
+
+  it("is not fooled by a result written where the sender controls the words", () => {
+    // The envelope address is echoed in a comment and in the SPF clause. Neither is a DKIM result.
+    const crafted = "mx.google.com; spf=pass (google.com: domain of a-dkim=pass-header.d=myworkday.com@evil.example designates 1.2.3.4 as permitted sender) smtp.mailfrom=a-dkim=pass-header.d=myworkday.com@evil.example; dmarc=pass (p=NONE) header.from=evil.example";
+    expect(senderVerified(mail({ auth: [crafted] }), workday.mail.senders)).toBe(false);
+    expect(senderVerified(mail({ auth: ['mx.google.com; spf=pass smtp.mailfrom="x; dkim=pass header.d=myworkday.com"@evil.example'] }), workday.mail.senders)).toBe(false);
+    expect(senderVerified(mail({ auth: ["mx.google.com; dkim=pass header.i=@myworkday.com.evil.example"] }), workday.mail.senders)).toBe(false);
+    // The real thing, with a comment in the middle, still counts.
+    expect(senderVerified(mail({ auth: ["mx.google.com; dkim=pass (2048-bit key) header.i=@myworkday.com header.s=s1"] }), workday.mail.senders)).toBe(true);
+    expect(senderVerified(mail({ from: "" }), workday.mail.senders)).toBe(false);
+  });
+
+  it("takes the sender from the address itself, never from the name beside it", () => {
+    expect(senderOf("Acme Careers <acme@myworkday.com>")).toBe("acme@myworkday.com");
+    expect(senderOf("acme@myworkday.com")).toBe("acme@myworkday.com");
+    expect(senderOf('"x <no-reply@myworkday.com>" <a@evil.example>')).toBe("a@evil.example");
+    // A name that is itself an address, unquoted, leaves two: that is no sender the check will speak for.
+    expect(senderOf("no-reply@myworkday.com <a@evil.example>")).toBe("");
   });
 
   it("refuses an email to another address, an old one, and one that is not a verification", () => {
@@ -172,6 +191,12 @@ describe("Gmail", () => {
     expect(m).toMatchObject({ id: "m9", from: "acme@myworkday.com", to: [ME], subject: "Verify your account", receivedAt: NOW.getTime() });
     // Only what Google's own server recorded counts.
     expect(m.auth).toEqual([PASSED]);
+    // Its line is the top one. A line further down that carries its name came with the message.
+    const forged = { ...raw, payload: { ...raw.payload, headers: [{ name: "Authentication-Results", value: "mx.google.com; dkim=fail header.i=@myworkday.com" }, ...raw.payload.headers] } };
+    expect(toMail(forged).auth).toEqual(["mx.google.com; dkim=fail header.i=@myworkday.com"]);
+    expect(whyNot(toMail(forged), req(), NOW)).toMatch(/could not be verified/);
+    const two = { ...raw, payload: { ...raw.payload, headers: [...raw.payload.headers, { name: "From", value: "a@evil.example" }] } };
+    expect(toMail(two).from).toBe("");
     expect(whyNot(m, req(), NOW)).toBeNull();
     expect(usable(m, req())).toEqual({ link: LINK, code: null });
   });

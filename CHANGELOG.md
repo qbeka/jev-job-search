@@ -24,6 +24,9 @@ changed for a person using the tool and what changed for a contributor.
 - `gmail connect | status | disconnect`: read-only Gmail through your own
   Google client, for the one email an employer sends to prove your address
   when an account is made. Never used for a human-check code.
+- A sign-in that is refused, or does not go through, pauses that account
+  until you sign in yourself or run `accounts status --clear`. Nothing is
+  retried on a timer.
 - `resume --submit`: after a sign-in you finished yourself (a robot check,
   a phone code, a refused password), the form is filled and sent.
 - `apply <Workday link>`, and Workday postings read from Workday's own

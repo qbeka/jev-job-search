@@ -317,8 +317,6 @@ export const ACCOUNTS = {
   maxResends: 1,
   /** Steps one sign-in may take before it is handed to the person. */
   maxSteps: 16,
-  /** After a board says the account is locked, the account is left alone this long. */
-  lockoutPauseHours: 24,
   /** New employer accounts per day when the person set no number of their own. */
   maxNewAccountsPerDay: 3,
   /** The pause after a click on a sign-in page before the page is read again. */

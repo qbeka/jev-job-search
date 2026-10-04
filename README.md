@@ -242,7 +242,7 @@ npx jev accounts password
 
 The first says the tool may sign in on Workday, make an account where an employer has none for you (at most 3 new a day), tick the account terms box, and read the verification email. Leave a flag out and that part stays yours. The second has your Mac ask you for the one password your job-board accounts use; it goes into the Keychain and is never shown, saved in a file, or sent to Claude or JEV.
 
-A wrong password is never tried twice. A robot check, a phone code, a passkey and single sign-on stop the job with the page left open for you; `npx jev resume --submit` carries on once you are through. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
+A wrong password is never tried twice: that account is left alone until you sign in yourself. A robot check, a phone code, a passkey and single sign-on stop the job with the page left open for you; `npx jev resume --submit` carries on once you are through. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
 
 ### Which jobs it keeps
 

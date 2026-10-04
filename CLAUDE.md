@@ -41,8 +41,10 @@ doctor` says what is in place and what to do next.
   `ensureSignedIn` (`src/accounts/auth.ts`) and nothing else: only into a
   box an adapter names, only while the tab is on an origin the account
   allows, only for an account in `data/accounts.json` or one the person's
-  standing rule lets the tool make. A wrong password is never retried and
-  never leads to a new account. Account terms are ticked only when the
+  standing rule lets the tool make. A sign-in that was refused, or did not
+  go through, is never retried and never leads to a new account: the
+  account is paused until the person lifts it. An account is written down
+  as made only once the board shows it exists. Account terms are ticked only when the
   person approved `account_terms`; a marketing box never. Every exit is
   bounded (`ACCOUNTS` in `src/config.ts`), and what the sign-in cannot do
   with certainty waits for the person. Any other page with a password box

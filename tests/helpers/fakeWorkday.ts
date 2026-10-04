@@ -26,6 +26,9 @@ export type Server = {
   token: string;
   /** Has a "Resend" button on the verification notice. */
   canResend?: boolean;
+  /** What the board says after Sign In or Create Account, in place of its usual answer. Empty words mean it says nothing and stays where it is. */
+  signInSays?: string;
+  signUpSays?: string;
 };
 
 export class FakeWorkday implements AuthPage {
@@ -138,7 +141,8 @@ export class FakeWorkday implements AuthPage {
     if (selector === c.signIn && this.view === "sign_in") {
       this.signInClicks++;
       const a = this.server.account;
-      if (a?.locked) this.errors = ["Your account has been locked. Try again later."];
+      if (this.server.signInSays !== undefined) this.errors = this.server.signInSays ? [this.server.signInSays] : [];
+      else if (a?.locked) this.errors = ["Your account has been locked. Try again later."];
       else if (!a || a.email !== this.boxes.email || a.password !== this.boxes.password) this.errors = ["ERROR: Invalid Username/Password"];
       else if (!a.verified) this.errors = ["Your account has not been verified. Check your email for the verification link."];
       else {
@@ -152,6 +156,10 @@ export class FakeWorkday implements AuthPage {
       this.registerClicks++;
       if (this.server.robotOnRegister) {
         this.view = "robot";
+        return true;
+      }
+      if (this.server.signUpSays !== undefined) {
+        this.errors = this.server.signUpSays ? [this.server.signUpSays] : [];
         return true;
       }
       if (this.server.account?.email === this.boxes.email) this.errors = ["An account already exists for this email address."];

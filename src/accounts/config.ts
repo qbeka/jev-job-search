@@ -86,9 +86,14 @@ const AccountState = z.object({
   lastLoginAt: z.string().nullable().default(null),
   /** Sign-in tries on one day. */
   attempts: z.object({ day: z.string(), count: z.number().int() }).default({ day: "", count: 0 }),
-  /** Set after a lockout or a wrong password: the account is left alone until then, or until the person clears it. */
+  /**
+   * Set when a sign-in was refused or did not go through. The account is then left alone until the person signs
+   * in themselves or clears it: nothing is retried on a timer. The date is kept for records that had one.
+   */
   pausedUntil: z.string().nullable().default(null),
   pausedWhy: z.string().nullable().default(null),
+  /** Set just before Create Account is clicked and cleared once the board's answer is known. Left behind only by a run that died in between. */
+  pendingSince: z.string().nullable().default(null),
 });
 export type AccountState = z.infer<typeof AccountState>;
 
@@ -99,11 +104,16 @@ const StateFile = z.object({
 });
 export type StateFile = z.infer<typeof StateFile>;
 
+/** A pause with no end: only the person lifts it. */
+export const PAUSED = "9999-12-31T00:00:00.000Z";
+
 export function loadState(file = PATHS.accountsState): StateFile {
+  if (!existsSync(file)) return StateFile.parse({});
   try {
-    return existsSync(file) ? StateFile.parse(JSON.parse(readFileSync(file, "utf8"))) : StateFile.parse({});
+    return StateFile.parse(JSON.parse(readFileSync(file, "utf8")));
   } catch {
-    return StateFile.parse({});
+    // It holds the pauses and the day's count. Starting over silently would lift every pause.
+    throw new Error(`${file} cannot be read. It records which accounts are paused, so nothing signs in until it is fixed or removed by you.`);
   }
 }
 

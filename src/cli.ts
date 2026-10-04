@@ -297,8 +297,8 @@ program
         skip = false;
         const outcome = await resume(jev, e.job.id, { stop: () => skip });
         if (outcome === "applied") sent.push(e.job.id);
-        if (outcome === "signed_in") signedIn.push(e.job.id);
-        console.log(outcome === "applied" ? "  Sent and recorded." : outcome === "signed_in" ? "  Signed in. Its form is filled next." : outcome === "gone" ? "  Its tab was closed. It is on your by-hand list." : "  Not done yet. It stays open; run resume again when you are ready.");
+        if (outcome === "signed_in" || outcome === "retry") signedIn.push(e.job.id);
+        console.log(outcome === "applied" ? "  Sent and recorded." : outcome === "signed_in" ? "  Signed in. Its form is filled next." : outcome === "retry" ? "  The sign-in is tried again next, to see what you did." : outcome === "gone" ? "  Its tab was closed. It is on your by-hand list." : "  Not done yet. It stays open; run resume again when you are ready.");
       }
       if (process.stdin.isTTY) process.stdin.pause();
       if (signedIn.length) {

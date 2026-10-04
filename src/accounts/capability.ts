@@ -44,7 +44,7 @@ export function capabilityFor(url: string, files: Files = {}, now = new Date()):
   const rule = file.providers[adapter.provider] ?? null;
   const st = stateOf(state, id);
   const base = { adapter, tenant, account };
-  if (st.pausedUntil && Date.parse(st.pausedUntil) > now.getTime()) return { ...base, verdict: "wait", creates: false, reason: st.pausedWhy ?? "the account is paused" };
+  if (st.pausedUntil) return { ...base, verdict: "wait", creates: false, reason: `${st.pausedWhy ?? "the account is paused"}. Sign in yourself in the tool's window, or run: npx jev accounts status --clear` };
   if (account && (account.mode === "existing_only" || account.createdAt || st.knownSince)) return { ...base, verdict: "can", creates: false, reason: null };
   const mayCreate = account ? account.mode === "create_if_missing" : rule?.mode === "create_if_missing";
   if (!mayCreate) return { ...base, verdict: "no", creates: false, reason: `${adapter.provider} (needs an account per company)` };

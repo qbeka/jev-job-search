@@ -39,18 +39,33 @@ export interface MailClient {
 const domainOf = (address: string) => address.split("@")[1]?.toLowerCase() ?? "";
 const under = (domain: string, parents: string[]) => parents.some((p) => domain === p || domain.endsWith(`.${p}`));
 
+/**
+ * The results a mail server recorded, one per method: "dkim=pass header.i=@x", "dmarc=pass header.from=x".
+ * Comments and quoted text are dropped first. They can echo what the sender chose (the envelope
+ * address is one), and nothing inside them is a result.
+ */
+function results(line: string): string[] {
+  let bare = line.replace(/"(?:[^"\\]|\\.)*"/g, " ");
+  for (let before = ""; before !== bare; ) {
+    before = bare;
+    bare = bare.replace(/\([^()]*\)/g, " ");
+  }
+  return bare.split(";").slice(1).map((r) => r.trim().toLowerCase());
+}
+
 /** True when the receiving server verified that the message really comes from the sender's domain. */
 export function senderVerified(mail: Mail, senders: string[]): boolean {
   const from = domainOf(mail.from);
-  return mail.auth.some((line) => {
-    const dmarc = /\bdmarc=pass\b[^;]*?header\.from=([a-z0-9.-]+)/i.exec(line)?.[1]?.toLowerCase();
-    if (dmarc && (from === dmarc || from.endsWith(`.${dmarc}`)) && under(dmarc, senders)) return true;
-    for (const m of line.matchAll(/\bdkim=pass\b[^;]*?header\.(?:i=@|d=)([a-z0-9.-]+)/gi)) {
-      const signer = m[1]?.toLowerCase() ?? "";
-      if (signer && (from === signer || from.endsWith(`.${signer}`)) && under(signer, senders)) return true;
-    }
-    return false;
-  });
+  if (!from) return false;
+  const aligned = (domain: string) => !!domain && (from === domain || from.endsWith(`.${domain}`)) && under(domain, senders);
+  return mail.auth.some((line) =>
+    results(line).some((r) => {
+      // A result counts only where it starts its own clause, and its domain only as a property of that clause.
+      if (/^dmarc=pass(\s|$)/.test(r)) return aligned(/(?:^|\s)header\.from=([a-z0-9.-]+)(?=\s|$)/.exec(r)?.[1] ?? "");
+      if (/^dkim=pass(\s|$)/.test(r)) return aligned(/(?:^|\s)header\.(?:i=[^@\s]*@|d=)([a-z0-9.-]+)(?=\s|$)/.exec(r)?.[1] ?? "");
+      return false;
+    }),
+  );
 }
 
 /** Why an email is not the one a request asked for, or null when it fits. */
@@ -111,10 +126,12 @@ const Used = z.object({
 type Used = z.infer<typeof Used>;
 
 export function loadUsed(file = PATHS.verifications): Used {
+  if (!existsSync(file)) return Used.parse({});
   try {
-    return existsSync(file) ? Used.parse(JSON.parse(readFileSync(file, "utf8"))) : Used.parse({});
+    return Used.parse(JSON.parse(readFileSync(file, "utf8")));
   } catch {
-    return Used.parse({});
+    // It records which emails were used. Starting over silently would let one be used twice.
+    throw new Error(`${file} cannot be read. It records which verification emails were used, so none is read until it is fixed or removed by you.`);
   }
 }
 

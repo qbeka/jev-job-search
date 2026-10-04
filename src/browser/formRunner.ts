@@ -85,6 +85,8 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
     // A board the tool can sign in to: the person's account is used, or made where they allowed it. Anything the
     // sign-in cannot finish with certainty comes back as what the job now waits for.
     const auth = await signInFor(page, applyUrlFor(job));
+    // An attempt that ran out of time was replaced by another: it must not write over that one's report.
+    signal?.throwIfAborted();
     if (auth && !auth.ok) return saveReport({ ...blockedReport(job, auth.reason, d.url, seconds()), auth: { status: auth.status, waitingFor: auth.waitingFor } });
     if (auth) {
       trace(`${job.company}: signed in (${auth.steps.join(", ")}) ${Date.now() - started}ms`);

@@ -86,7 +86,7 @@ export function clearPauses(files: Files = {}): number {
     let n = 0;
     for (const [id, a] of Object.entries(s.accounts)) {
       if (a.pausedUntil) n++;
-      s.accounts[id] = { ...a, pausedUntil: null, pausedWhy: null, attempts: { day: "", count: 0 } };
+      s.accounts[id] = { ...a, pausedUntil: null, pausedWhy: null, pendingSince: null, attempts: { day: "", count: 0 } };
     }
     return n;
   }, files.state);
@@ -111,7 +111,7 @@ export function describeAccounts(store: SecretStore, files: Files = {}, now = ne
   if (!f.accounts.length) lines.push("No employer account yet.");
   for (const a of f.accounts) {
     const st = stateOf(s, a.id);
-    const paused = st.pausedUntil && Date.parse(st.pausedUntil) > now.getTime();
+    const paused = !!st.pausedUntil;
     lines.push(`${a.id}  ${a.email}  ${a.createdAt ? `made by the tool on ${a.createdAt.slice(0, 10)}` : a.mode === "existing_only" ? "your own account" : "to be made on first use"}  ${st.lastLoginAt ? `last signed in ${st.lastLoginAt.slice(0, 10)}` : "never signed in"}${paused ? `  PAUSED: ${st.pausedWhy ?? ""} (lift it: npx jev accounts status --clear)` : ""}`);
   }
   return lines;

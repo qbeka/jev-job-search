@@ -11,9 +11,9 @@
 import { ACCOUNTS, GMAIL } from "../config.js";
 import type { WaitingFor } from "../jobs/queue.js";
 import { Secret } from "../util/redact.js";
-import { dayOf, loadAccounts, loadState, mutateAccounts, mutateState, stateOf, type Account, type ProviderRule } from "./config.js";
+import { dayOf, loadAccounts, loadState, mutateAccounts, mutateState, PAUSED, stateOf, type Account, type ProviderRule } from "./config.js";
 import type { Adapter, AuthPage, AuthSnapshot, Verifier } from "./provider.js";
-import type { SecretStore } from "./secrets.js";
+import { passwordProblems, type SecretStore } from "./secrets.js";
 
 export type AuthContext = {
   adapter: Adapter;
@@ -85,8 +85,12 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
   const rule: ProviderRule | null = file.providers[adapter.provider] ?? null;
   let account: Account | null = file.accounts.find((a) => a.id === id) ?? null;
   const state = () => stateOf(loadState(ctx.files?.state), id);
+  /** Left by a run that clicked Create Account and died before the board answered: when that was. */
+  const leftBehind = state().pendingSince;
+  /** Set once this pass clicked Create Account and the board has not said no: the account is taken to exist. */
+  let created = false;
   /** True when the tool has reason to believe the account exists on the board. */
-  const known = () => !!account && (account.mode === "existing_only" || !!account.createdAt || !!state().knownSince);
+  const known = () => created || (!!account && (account.mode === "existing_only" || !!account.createdAt || !!state().knownSince));
   const mayRegister = () => !known() && (account ? account.mode === "create_if_missing" : rule?.mode === "create_if_missing");
   const terms = account ?? rule;
   const stop = (status: AuthStop["status"], waitingFor: WaitingFor | null, reason: string): AuthStop => ({ ok: false, status, waitingFor, reason, steps });
@@ -96,8 +100,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
   const email = terms.email;
   const password = secretOf(ctx.secrets, terms.secret);
   if (!password) return stop("login_required", "login", "no password is stored for your job-board accounts. Set one: npx jev accounts password");
-  const paused = state().pausedUntil;
-  if (paused && Date.parse(paused) > now().getTime()) return stop("awaiting_user_action", "login", `${state().pausedWhy ?? "the account is paused"}. Sign in yourself in the tool's window, or fix it and run: npx jev accounts status --clear`);
+  if (state().pausedUntil) return stop("awaiting_user_action", "login", `${state().pausedWhy ?? "the account is paused"}. Nothing is tried again until you sign in yourself in the tool's window, or fix it and run: npx jev accounts status --clear`);
 
   const read = (): Promise<AuthSnapshot> => page.read(adapter.controls, adapter.words);
   const click = async (selector: string, what: string) => {
@@ -122,18 +125,47 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
       else f.accounts.push(next);
       return next;
     }, ctx.files?.accounts);
-  const pause = (why: string) =>
+  const setState = (patch: Partial<ReturnType<typeof state>>) =>
     mutateState((s) => {
-      s.accounts[id] = { ...stateOf(s, id), pausedUntil: new Date(now().getTime() + ACCOUNTS.lockoutPauseHours * 3_600_000).toISOString(), pausedWhy: why };
+      s.accounts[id] = { ...stateOf(s, id), ...patch };
     }, ctx.files?.state);
+  /** A sign-in that was refused, or did not go through, is never tried again by the tool: only the person lifts this. */
+  const pause = (why: string) => setState({ pausedUntil: PAUSED, pausedWhy: why });
 
   let triedLogin = false;
   let triedRegister = false;
   let verified = false;
-  let created = false;
+  /** True once the board itself showed that the account this pass made exists: it asked for the address to be proven, or opened the application. */
+  let confirmed = false;
   let unknown = 0;
   /** When the board was last asked for something that makes it send mail. */
   let askedAt: Date | null = null;
+  /** What this pass wrote down before it clicked Create Account, so it can be taken back if the board did not make the account. */
+  let sign: { before: Account | null; day: string; at: Date } | null = null;
+  const counted = (day: string, by: number) =>
+    mutateState((st) => {
+      st.created[day] = Math.max(0, (st.created[day] ?? 0) + by);
+    }, ctx.files?.state);
+  /** The board did not make the account: the entry goes back to what the person had, and the day's count with it. */
+  const notMade = () => {
+    if (!sign) return;
+    const was = sign.before;
+    counted(sign.day, -1);
+    mutateAccounts((f) => {
+      f.accounts = [...f.accounts.filter((a) => a.id !== id), ...(was ? [was] : [])];
+    }, ctx.files?.accounts);
+    setState({ pendingSince: null });
+    account = was;
+    created = false;
+    sign = null;
+  };
+  /** The board showed the account exists: it is written down as made. */
+  const made = () => {
+    if (!sign || confirmed) return;
+    account = saveAccount({ createdAt: sign.at.toISOString() });
+    setState({ pendingSince: null });
+    confirmed = true;
+  };
 
   try {
     for (let step = 0; step < ACCOUNTS.maxSteps; step++) {
@@ -152,15 +184,17 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
       if (view === "signed_in") {
         const who = adapter.identity(s);
         if (who && who !== email.toLowerCase()) return stop("awaiting_user_action", "login", "the tool's window is signed in to this employer with another address. Sign out there, then run: npx jev resume");
+        made();
         account = saveAccount({});
         const at = now().toISOString();
-        mutateState((st) => {
-          st.accounts[id] = { ...stateOf(st, id), knownSince: stateOf(st, id).knownSince ?? at, lastLoginAt: at, pausedUntil: null, pausedWhy: null };
-        }, ctx.files?.state);
+        setState({ knownSince: state().knownSince ?? at, lastLoginAt: at, pausedUntil: null, pausedWhy: null, pendingSince: null });
         return { ok: true, account, created, steps };
       }
 
-      if (view === "challenge") return stop("awaiting_user_action", "robot_check", "the sign-in page asks you to confirm you are not a robot. The page is open in the tool's window");
+      if (view === "challenge") {
+        notMade();
+        return stop("awaiting_user_action", "robot_check", "the sign-in page asks you to confirm you are not a robot. The page is open in the tool's window");
+      }
       if (view === "elsewhere") return stop("awaiting_user_action", "sso", "this employer signs people in another way (single sign-on, a passkey or a phone code). Sign in yourself in the tool's window");
 
       if (view === "method") {
@@ -171,11 +205,14 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
       if (view === "sign_in") {
         if (!known()) {
           if (!mayRegister()) return stop("login_required", "login", `no account is set up for ${ctx.tenant.tenant}. To allow one: npx jev accounts add`);
-          if (triedRegister) return stop("awaiting_user_action", "login", "the sign-up did not finish and the page is back at the sign-in. Look at it in the tool's window");
           await click(adapter.controls.toRegister, "Create Account");
           continue;
         }
-        if (triedLogin) return stop("awaiting_user_action", "login", "the sign-in did not go through and the page does not say why. Sign in yourself in the tool's window");
+        if (triedLogin) {
+          // The click was made and the board neither let the tool in nor said why. That is not tried again.
+          pause("a sign-in did not go through and the page did not say why");
+          return stop("awaiting_user_action", "login", "the sign-in did not go through and the page does not say why. Nothing was retried. Sign in yourself in the tool's window");
+        }
         const today = dayOf(now());
         const tries = state().attempts;
         if (tries.day === today && tries.count >= ACCOUNTS.maxLoginAttempts) return stop("awaiting_user_action", "login", `the tool tried to sign in ${tries.count} times today and leaves the account alone until tomorrow. Sign in yourself in the tool's window`);
@@ -183,10 +220,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         await enter(page, adapter.controls.email, email, allowed, "text");
         await enter(page, adapter.controls.password, password, allowed, "password");
         steps.push("typed the address and the password");
-        mutateState((st) => {
-          const was = stateOf(st, id);
-          st.accounts[id] = { ...was, attempts: { day: today, count: was.attempts.day === today ? was.attempts.count + 1 : 1 } };
-        }, ctx.files?.state);
+        setState({ attempts: { day: today, count: tries.day === today ? tries.count + 1 : 1 } });
         askedAt = now();
         await click(adapter.controls.signIn, "Sign In");
         const result = adapter.afterSignIn(await settled("sign_in"));
@@ -197,23 +231,34 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         }
         if (result === "locked") {
           pause("the board says the account is locked");
-          return stop("awaiting_user_action", "login", `the board says the account is locked. The tool leaves it alone for ${ACCOUNTS.lockoutPauseHours} hours`);
+          return stop("awaiting_user_action", "login", "the board says the account is locked. The tool leaves it alone until you have signed in yourself");
+        }
+        if (result === "unclear") {
+          pause("the board refused a sign-in with a message the tool does not know");
+          return stop("awaiting_user_action", "login", "the board refused the sign-in with a message the tool does not know. Nothing was retried. Look at it in the tool's window");
         }
         if (result === "challenge") return stop("awaiting_user_action", "robot_check", "the sign-in page asks you to confirm you are not a robot. The page is open in the tool's window");
         continue;
       }
 
       if (view === "register") {
+        if (triedRegister && created && !confirmed) {
+          // Create Account was clicked and the form is still there with nothing said: the account was not made, as far as anyone can tell.
+          notMade();
+          return stop("awaiting_user_action", "login", "the sign-up did not go through and the page does not say why. Nothing was retried. Look at it in the tool's window");
+        }
         if (known()) {
           await click(adapter.controls.toSignIn, "Sign In");
           continue;
         }
         if (!mayRegister()) return stop("login_required", "login", `no account is set up for ${ctx.tenant.tenant}. To allow one: npx jev accounts add`);
-        if (triedRegister) return stop("awaiting_user_action", "login", "the sign-up did not go through and the page does not say why. Look at it in the tool's window");
+        if (triedRegister) return stop("awaiting_user_action", "login", "the sign-up did not go through. Look at it in the tool's window");
         const today = dayOf(now());
         const limit = rule?.maxNewAccountsPerDay ?? ACCOUNTS.maxNewAccountsPerDay;
         if ((loadState(ctx.files?.state).created[today] ?? 0) >= limit) return stop("queued", null, `today's limit of ${limit} new accounts is reached. This job waits for another day`);
         if (s.present.terms && !terms.agreements.includes("account_terms")) return stop("awaiting_user_action", "agreement", "the sign-up asks you to accept the account terms, which you have not approved for the tool. Accept them yourself in the tool's window, or allow it: npx jev accounts add");
+        const problems = passwordProblems(password);
+        if (problems.length) return stop("login_required", "login", `the stored password cannot be used for a new account: it needs ${problems.join(", ")}. Choose another: npx jev accounts password`);
         triedRegister = true;
         await enter(page, adapter.controls.email, email, allowed, "text");
         await enter(page, adapter.controls.password, password, allowed, "password");
@@ -223,47 +268,50 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
           if (!(await page.holds(adapter.controls.terms))?.checked) throw new Halt("awaiting_user_action", "agreement", "the account terms box would not take a tick. Tick it yourself in the tool's window");
         }
         steps.push("filled the sign-up form");
-        // From this click on the account may exist, so it is written down first.
-        account = saveAccount({ mode: "create_if_missing", createdAt: now().toISOString() });
-        mutateState((st) => {
-          st.created[today] = (st.created[today] ?? 0) + 1;
-        }, ctx.files?.state);
+        // From this click on the account may exist. That is written down first, as not yet known, so a run that dies
+        // here leaves a note and not a claim: the next run signs up again and the board says if the account is there.
+        sign = { before: account, day: today, at: now() };
+        account = saveAccount({ mode: "create_if_missing" });
+        counted(today, 1);
+        setState({ pendingSince: sign.at.toISOString() });
         created = true;
-        askedAt = now();
+        askedAt = sign.at;
         await click(adapter.controls.register, "Create Account");
         const result = adapter.afterRegister(await settled("register"));
         steps.push(`sign-up: ${result}`);
-        const notMade = () => {
-          created = false;
-          mutateState((st) => {
-            st.created[today] = Math.max(0, (st.created[today] ?? 1) - 1);
-          }, ctx.files?.state);
-        };
         if (result === "exists") {
           // The board already has an account for this address. It is signed in to, once, like any other.
-          notMade();
+          counted(today, -1);
+          setState({ pendingSince: null });
+          sign = null;
+          created = false;
           account = saveAccount({ mode: "existing_only", createdAt: null });
           continue;
         }
-        if (result === "password_refused" || result === "challenge") {
+        if (result === "challenge") {
           notMade();
-          mutateAccounts((f) => {
-            f.accounts = f.accounts.filter((a) => a.id !== id);
-          }, ctx.files?.accounts);
-          account = null;
-          return result === "challenge"
-            ? stop("awaiting_user_action", "robot_check", "the sign-up page asks you to confirm you are not a robot. The page is open in the tool's window")
-            : stop("awaiting_user_action", "login", "the board refused the password for a new account: it does not meet this employer's rules. Choose another: npx jev accounts password");
+          return stop("awaiting_user_action", "robot_check", "the sign-up page asks you to confirm you are not a robot. The page is open in the tool's window");
+        }
+        if (result === "password_refused") {
+          notMade();
+          return stop("awaiting_user_action", "login", "the board refused the password for a new account: it does not meet this employer's rules. Choose another: npx jev accounts password");
+        }
+        if (result === "unclear") {
+          notMade();
+          return stop("awaiting_user_action", "login", "the board refused the sign-up with a message the tool does not know. Nothing was retried. Look at it in the tool's window");
         }
         continue;
       }
 
       if (view === "verify_email") {
-        if (verified) return stop("awaiting_email_verification", null, "the verification email was used and the board still asks for it. Look at the tool's window");
-        if (!terms.emailVerification) return stop("awaiting_email_verification", null, "the board mailed you a link to prove the address is yours, and you have not let the tool read that mail. Click the link yourself, then run: npx jev resume");
-        if (!ctx.verifier) return stop("awaiting_email_verification", null, "the board mailed you a link to prove the address is yours, and no mailbox is connected. Click the link yourself, or connect Gmail (npx jev gmail connect), then run: npx jev resume");
-        const madeAt = account?.createdAt ? new Date(account.createdAt) : null;
-        const recent = madeAt && now().getTime() - madeAt.getTime() < GMAIL.requestTtlMs ? madeAt : null;
+        // The board asks for the address to be proven, so the account is there.
+        made();
+        if (verified) return stop("awaiting_email_verification", "email_link", "the verification email was used and the board still asks for it. Look at the tool's window");
+        if (!terms.emailVerification) return stop("awaiting_email_verification", "email_link", "the board mailed you a link to prove the address is yours, and you have not let the tool read that mail. Click the link yourself, then run: npx jev resume");
+        if (!ctx.verifier) return stop("awaiting_email_verification", "email_link", "the board mailed you a link to prove the address is yours, and no mailbox is connected. Click the link yourself, or connect Gmail (npx jev gmail connect), then run: npx jev resume");
+        // A sign-up from this pass, or from a run that died minutes ago, is when the email was asked for.
+        const earlier = account?.createdAt ?? leftBehind;
+        const recent = earlier && now().getTime() - Date.parse(earlier) < GMAIL.requestTtlMs ? new Date(earlier) : null;
         const request = () => ({ accountId: id, recipient: email, allowedOrigins: allowed, since: recent ?? askedAt ?? now(), shape: adapter.mail });
         let found = await ctx.verifier.find(request());
         for (let resent = 0; !found.ok && resent < ACCOUNTS.maxResends; resent++) {
@@ -273,7 +321,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
           await page.wait(ACCOUNTS.stepMs);
           found = await ctx.verifier.find({ ...request(), since: askedAt });
         }
-        if (!found.ok) return stop("awaiting_email_verification", null, `${found.why}. Click the link in the board's email yourself, then run: npx jev resume`);
+        if (!found.ok) return stop("awaiting_email_verification", "email_link", `${found.why}. Click the link in the board's email yourself, then run: npx jev resume`);
         verified = true;
         if (found.link) {
           const went = await page.follow(found.link, allowed);
@@ -288,7 +336,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
           await click(adapter.controls.sendCode, "Verify");
           steps.push("typed the verification code");
         } else {
-          return stop("awaiting_email_verification", null, "the board's email held nothing the tool can use. Follow it yourself, then run: npx jev resume");
+          return stop("awaiting_email_verification", "email_link", "the board's email held nothing the tool can use. Follow it yourself, then run: npx jev resume");
         }
         // The address is proven: one sign-in is allowed again.
         triedLogin = false;

@@ -142,6 +142,16 @@ const Message = z.object({ id: z.string(), internalDate: z.string(), payload: Pa
 
 const addresses = (value: string): string[] => [...value.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)].map((m) => m[0].toLowerCase());
 
+/**
+ * The one address a From header names. A display name may hold anything, another address included,
+ * so quoted text is dropped first, and a header that still names more than one address names none.
+ */
+export function senderOf(from: string): string {
+  const bare = from.replace(/"(?:[^"\\]|\\.)*"/g, " ");
+  const found = addresses(bare);
+  return found.length === 1 ? (found[0] as string) : "";
+}
+
 /** Turns Gmail's message into the few facts the verification needs. */
 export function toMail(raw: unknown): Mail {
   const m = Message.parse(raw);
@@ -158,12 +168,14 @@ export function toMail(raw: unknown): Mail {
   walk(m.payload, 0);
   return {
     id: m.id,
-    from: addresses(all("from")[0] ?? "")[0] ?? "",
+    // A message with two From headers is not one the check can speak for.
+    from: all("from").length === 1 ? senderOf(all("from")[0] as string) : "",
     to: [...new Set([...all("to"), ...all("delivered-to")].flatMap(addresses))],
     subject: all("subject")[0] ?? "",
     receivedAt: Number(m.internalDate),
-    // Only what Google's own server recorded counts: a header a sender wrote in proves nothing.
-    auth: all("authentication-results").filter((v) => /^\s*mx\.google\.com\s*;/i.test(v)),
+    // Only what Google's own server recorded counts, and it writes its line above every other: a line
+    // further down, whatever name it carries, came with the message and proves nothing.
+    auth: all("authentication-results").slice(0, 1).filter((v) => /^\s*mx\.google\.com\s*;/i.test(v)),
     text,
     html,
   };

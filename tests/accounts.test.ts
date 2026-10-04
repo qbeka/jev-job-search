@@ -83,6 +83,11 @@ describe("the Workday adapter", () => {
     expect(workday.afterSignIn(said(["Your account has been locked."]))).toBe("locked");
     expect(workday.afterSignIn(said(["Your account has not been verified. Check your email."]))).toBe("verify_email");
     expect(workday.afterSignIn(said(["Something went wrong"]))).toBe("unclear");
+    // A hiccup is not a lockout, and a message about the password is a refusal however it is worded.
+    expect(workday.afterSignIn(said(["Something went wrong. Please try again later."]))).toBe("unclear");
+    expect(workday.afterSignIn(said(["We couldn't verify your email address or password."]))).toBe("wrong_password");
+    expect(workday.view(said(["We couldn't verify your email address or password."]))).toBe("sign_in");
+    expect(workday.afterSignIn(said(["Too many failed attempts."]))).toBe("locked");
     expect(workday.afterRegister({ ...live.register, errors: ["An account already exists for this email address."] })).toBe("exists");
     expect(workday.afterRegister({ ...live.register, errors: ["Password must contain a special character."] })).toBe("password_refused");
   });
@@ -168,6 +173,33 @@ describe("signing in", () => {
     expect(capabilityFor(APPLY, files, NOW)?.verdict).toBe("can");
   });
 
+  it("does not try a refused password again on a later day", async () => {
+    addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
+    const page = new FakeWorkday(server({ account: { email: EMAIL, password: "Another-Pass-9!", verified: true } }));
+    await ensureSignedIn(page, ctx());
+    const later = new Date(NOW.getTime() + 40 * 24 * 3_600_000);
+    const again = new FakeWorkday(page.server);
+    const r = await ensureSignedIn(again, { ...ctx(), now: () => later });
+    expect(r.ok).toBe(false);
+    expect(again.typed).toEqual([]);
+    expect(capabilityFor(APPLY, files, later)?.verdict).toBe("wait");
+  });
+
+  it("does not retry a sign-in the board refused in words it does not know, or without a word", async () => {
+    for (const says of ["We could not complete your request.", ""]) {
+      removeAccounts("all", files);
+      addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
+      const page = new FakeWorkday(server({ account: { email: EMAIL, password: PASSWORD, verified: true }, signInSays: says }));
+      const r = await ensureSignedIn(page, ctx());
+      expect(r, says).toMatchObject({ ok: false, status: "awaiting_user_action", waitingFor: "login" });
+      expect(page.signInClicks).toBe(1);
+      // The next job for this employer, in the same run or the next, types nothing.
+      const next = new FakeWorkday(page.server);
+      expect((await ensureSignedIn(next, ctx())).ok).toBe(false);
+      expect(next.typed).toEqual([]);
+    }
+  });
+
   it("leaves a locked account alone", async () => {
     addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
     const page = new FakeWorkday(server({ account: { email: EMAIL, password: PASSWORD, verified: true, locked: true } }));
@@ -215,6 +247,40 @@ describe("signing in", () => {
     expect(r).toMatchObject({ ok: false, status: "awaiting_user_action", waitingFor: "robot_check" });
     expect(loadAccounts(files.accounts).accounts).toEqual([]);
     expect(loadState(files.state).created[dayOf(NOW)]).toBe(0);
+  });
+
+  it("does not write down an account the board did not make", async () => {
+    for (const says of ["Something went wrong.", ""]) {
+      removeAccounts("all", files);
+      allowAll();
+      const page = new FakeWorkday(server({ signUpSays: says }));
+      const r = await ensureSignedIn(page, ctx());
+      expect(r, says).toMatchObject({ ok: false, status: "awaiting_user_action" });
+      expect(page.registerClicks).toBe(1);
+      // No sign-in was tried for an account that is not there, and nothing is left that says it is.
+      expect(page.signInClicks).toBe(0);
+      expect(loadAccounts(files.accounts).accounts).toEqual([]);
+      expect(loadState(files.state).created[dayOf(NOW)]).toBe(0);
+      expect(stateOf(loadState(files.state), "workday:acme")).toMatchObject({ pausedUntil: null, pendingSince: null });
+      expect(capabilityFor(APPLY, files, NOW)).toMatchObject({ verdict: "can", creates: true });
+    }
+  });
+
+  it("keeps the person's own entry when a sign-up does not go through", async () => {
+    const mine = addEmployer(APPLY, { email: EMAIL, create: true, terms: true, verifyEmail: false }, files);
+    const r = await ensureSignedIn(new FakeWorkday(server({ robotOnRegister: true })), ctx());
+    expect(r).toMatchObject({ ok: false, waitingFor: "robot_check" });
+    expect(loadAccounts(files.accounts).accounts).toEqual([mine]);
+    expect(capabilityFor(APPLY, files, NOW)).toMatchObject({ verdict: "can", creates: true });
+  });
+
+  it("will not sign up with a password the board's rules refuse", async () => {
+    allowAll();
+    store.values.set(ACCOUNTS.passwordItem, "weakpass");
+    const page = new FakeWorkday(server());
+    const r = await ensureSignedIn(page, ctx());
+    expect(r).toMatchObject({ ok: false, status: "login_required" });
+    expect(page.typed).toEqual([]);
   });
 
   it("does not accept account terms the person has not approved", async () => {
@@ -353,6 +419,36 @@ describe("proving the address by email", () => {
     // The email asked for is the one from the sign-up, not only one newer than this run.
     expect(v.asked[0]?.since.toISOString()).toBe(made);
   });
+
+  it("picks up after a run that died right after the click on Create Account", async () => {
+    allowAll();
+    // What such a run leaves: an entry that claims nothing, and a note of when it clicked.
+    const clicked = new Date(NOW.getTime() - 3 * 60_000).toISOString();
+    writeFileSync(files.accounts, JSON.stringify({ ...loadAccounts(files.accounts), accounts: [{ id: "workday:acme", provider: "workday", tenant: "acme", allowedOrigins: [ORIGIN], email: EMAIL, mode: "create_if_missing", emailVerification: true, agreements: ["account_terms"], createdAt: null }] }));
+    mutateState((s) => {
+      s.accounts["workday:acme"] = { ...stateOf(s, "workday:acme"), pendingSince: clicked };
+      s.created[dayOf(NOW)] = 1;
+    }, files.state);
+    const page = new FakeWorkday(server({ verifies: true, account: { email: EMAIL, password: PASSWORD, verified: false } }));
+    const v = scriptedVerifier([{ ok: true, messageId: "m5", link, code: null }]);
+    const r = await ensureSignedIn(page, ctx(v));
+    // The board says the account is there, so it is signed in to and its address proven. It is not counted twice.
+    expect(r.ok && !r.created).toBe(true);
+    expect(page.registerClicks).toBe(1);
+    expect(page.signInClicks).toBe(2);
+    expect(v.asked[0]?.since.toISOString()).toBe(clicked);
+    expect(loadState(files.state).created[dayOf(NOW)]).toBe(1);
+    expect(stateOf(loadState(files.state), "workday:acme").pendingSince).toBeNull();
+  });
+
+  it("writes the account down as made once the board asks for the address to be proven", async () => {
+    allowAll();
+    const page = new FakeWorkday(server({ verifies: true }));
+    const r = await ensureSignedIn(page, ctx(null));
+    expect(r).toMatchObject({ ok: false, status: "awaiting_email_verification", waitingFor: "email_link" });
+    expect(loadAccounts(files.accounts).accounts[0]?.createdAt).toBe(NOW.toISOString());
+    expect(loadState(files.state).created[dayOf(NOW)]).toBe(1);
+  });
 });
 
 describe("what the tool may apply to", () => {
@@ -403,6 +499,12 @@ describe("the accounts file and the secret store", () => {
     expect(text).not.toMatch(/"password"\s*:|token|secret"\s*:\s*"[^{]/i);
   });
 
+  it("stops, and does not start over, when the file that holds the pauses cannot be read", () => {
+    writeFileSync(files.state, "{ not json");
+    expect(() => loadState(files.state)).toThrow(/cannot be read/);
+    expect(() => capabilityFor(APPLY, files, NOW)).toThrow(/cannot be read/);
+  });
+
   it("refuses a file that is not valid, and says where", () => {
     writeFileSync(files.accounts, JSON.stringify({ accounts: [{ id: "x", provider: "workday", tenant: "acme", allowedOrigins: ["not a url"], email: "nope", mode: "existing_only" }] }));
     expect(() => loadAccounts(files.accounts)).toThrow(/allowedOrigins|email/);
@@ -429,6 +531,8 @@ describe("the accounts file and the secret store", () => {
   it("checks a password against the board's rules without showing it", () => {
     expect(passwordProblems(new Secret(PASSWORD))).toEqual([]);
     expect(passwordProblems(new Secret("short"))).toEqual(["at least 8 characters", "a digit", "an upper-case letter", "a special character"]);
+    // The Keychain would hand these back in another form, which would then be typed as the password.
+    expect(passwordProblems(new Secret("Fake-Pass-123! é"))[0]).toMatch(/plain keyboard/);
   });
 
   it("reads the same item from the environment on a machine with no Keychain", () => {
@@ -441,15 +545,28 @@ describe("the accounts file and the secret store", () => {
 
   it("gives the Keychain a value on standard input, never as an argument", () => {
     const calls: { args: string[]; input?: string }[] = [];
+    let held = "";
+    let takes = true;
     const kc = new KeychainStore((args, opts) => {
       calls.push({ args, ...(opts.input !== undefined ? { input: opts.input } : {}) });
-      return { status: 0, stdout: args[0] === "find-generic-password" ? "stored-value\n" : "" };
+      // The stand-in keeps what the command line says, unquoted the way `security` reads it.
+      if (args[0] === "-i" && takes) held = (/ -w "(.*)"\n$/s.exec(opts.input ?? "")?.[1] ?? "").replace(/\\(["\\])/g, "$1");
+      return { status: 0, stdout: args[0] === "find-generic-password" ? `${held}\n` : "" };
     }, "jev-test");
-    kc.set("gmail-refresh-token", new Secret('tok"en\\1'));
+    const made = 'tok"en\\1';
+    kc.set("gmail-refresh-token", new Secret(made));
     expect(calls[0]?.args).toEqual(["-i"]);
-    expect(calls[0]?.args.join(" ")).not.toContain("tok");
+    // No argument of any call holds the value, or a part of it.
+    expect(calls.map((c) => c.args.join(" ")).join(" ")).not.toMatch(/tok"|en\\1/);
     expect(calls[0]?.input).toBe('add-generic-password -U -s "jev-test" -a "gmail-refresh-token" -w "tok\\"en\\\\1"\n');
-    expect(kc.get("gmail-refresh-token")?.reveal()).toBe("stored-value");
+    expect(kc.get("gmail-refresh-token")?.reveal()).toBe(made);
     expect(String(kc.get("gmail-refresh-token"))).toBe("[redacted]");
+    // A value that would end the command line and start another is refused before anything runs.
+    const before = calls.length;
+    expect(() => kc.set("x", new Secret("line one\ndelete-keychain"))).toThrow(/cannot take/);
+    expect(calls.length).toBe(before);
+    // A store that says yes and keeps nothing is found out by reading the item back.
+    takes = false;
+    expect(() => kc.set("y", new Secret("another-made-up-value"))).toThrow(/did not take/);
   });
 });
