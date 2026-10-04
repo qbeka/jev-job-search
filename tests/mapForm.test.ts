@@ -281,3 +281,14 @@ describe("which document a file box asks for", () => {
   });
 });
 
+
+describe("a question about needing a work authorization", () => {
+  it("is a question about sponsorship, not about being authorized", () => {
+    const q = (label: string) => categoryOf({ label, section: "", hint: "", kind: "select" });
+    expect(q("Do you require work authorization? (required)")).toBe("sponsorship");
+    expect(q("Will you need a work visa to take this job?")).toBe("sponsorship");
+    expect(q("Will you now or in the future require sponsorship for employment visa status?")).toBe("sponsorship");
+    expect(q("Are you legally authorized to work in the United States?")).toBe("authorization");
+    expect(q("Are you authorized to work in Canada without requiring sponsorship?")).toBe("authorization");
+  });
+});

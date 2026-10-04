@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { isFormWrite } from "../src/browser/cdp.js";
 import { closestOptions, pickOption } from "../src/browser/dropdowns.js";
 import { rightAlready } from "../src/browser/fill.js";
+import { askAgain } from "../src/run/pipeline.js";
 import { showsPicked } from "../src/util/dates.js";
-import { comparePages, isClean, isReady, pickNext, pickSubmit, notOnScreen, showsAnother, splitFailures } from "../src/browser/report.js";
+import { comparePages, fieldsBlamed, isClean, isReady, pickNext, pickSubmit, notOnScreen, showsAnother, splitFailures } from "../src/browser/report.js";
 import type { FieldsDump } from "../src/forms/fields.js";
 
 const hints = ["Edmonton", "Alberta", "AB", "Canada"];
@@ -248,5 +249,32 @@ describe("choices that sit close together", () => {
     expect(showsPicked("Job Board > Other", "LinkedIn")).toBe(false);
     expect(showsPicked("Canada", "Canada")).toBe(true);
     expect(showsPicked("Canada", "Cameroon")).toBe(false);
+  });
+});
+
+describe("a form that is not given up at the first trouble", () => {
+  const planned = [
+    { selector: "#zip", label: "Postal Code*" },
+    { selector: "#src", label: "How Did You Hear About Us? (required)" },
+    { selector: "#x", label: "No" },
+  ];
+
+  it("finds the boxes a page's own errors name, each once, with the page's words", () => {
+    const found = fieldsBlamed(planned, ["Error: Postal Code is required and must have a value.", "Error - How Did You Hear About Us?: enter a value", "Postal Code is not valid"]);
+    expect(found.map((x) => x.selector)).toEqual(["#zip", "#src"]);
+    expect(found[0]?.why).toMatch(/would not move on and said: "Error: Postal Code is required/);
+    expect(fieldsBlamed(planned, ["Something went wrong. No changes were saved."])).toEqual([]);
+  });
+
+  it("asks the writer again while a round changes what did not land, and stops when it changes nothing", () => {
+    const report = (failed: { selector: string; why: string }[], over: object = {}) => ({ state: "filled", failed: failed.map((f) => ({ ...f, label: f.selector })), ...over }) as never;
+    const seen = new Set<string>();
+    const first = [{ selector: "#c", why: 'no option matches "Canada" among: CA | US' }];
+    expect(askAgain(report(first), seen)).toBe(true);
+    expect(askAgain(report(first), seen)).toBe(false);
+    expect(askAgain(report([{ selector: "#c", why: 'the page shows "US" instead of "CA"' }]), seen)).toBe(true);
+    expect(askAgain(report([]), new Set())).toBe(false);
+    expect(askAgain(report(first, { stuck: "held" }), new Set())).toBe(false);
+    expect(askAgain(report(first, { resolution: { verdict: "skip" } }), new Set())).toBe(false);
   });
 });

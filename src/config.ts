@@ -528,6 +528,10 @@ export const RUN = {
   abortGraceMs: 5_000,
   /** How many times a form is opened and filled when values did not land. The second go comes when the other forms are done, with the window to itself. */
   fillAttempts: 2,
+  /** How many times the writer is asked about one page: once, then again with what did not land and why, as long as a round changes something. */
+  resolveRounds: 3,
+  /** How many times a page whose Next did not move the form is put right, or pressed again, before the form is left for the person. */
+  nextRetries: 2,
   /** Longest one form may take to open and fill. A page that never settles is recorded as blocked instead of holding up the run. */
   fillTimeoutMs: 180_000,
   /** Forms handed to the writer at once. */

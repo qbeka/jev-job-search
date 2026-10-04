@@ -20,7 +20,7 @@ import { closeTab, ensureBrowser, newTab, Page, sleep } from "./cdp.js";
 import { candidateOptions, closestOptions, readDropdownOptions } from "./dropdowns.js";
 import { applyFills, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
 import { learn, notesFor, signatureOf, type Method } from "../knowledge/sites.js";
-import { blockedReport, comparePages, notOnScreen, showsAnother, showsPlanned, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
+import { blockedReport, comparePages, fieldsBlamed, notOnScreen, showsAnother, showsPlanned, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
 import { signInFor } from "../accounts/gate.js";
 import { controlStates, dump, goto, inFront, inTurn, install, loadSession, mutateSession, pageFor, settle, shownValues, trace, type Point } from "./session.js";
 
@@ -289,6 +289,14 @@ export async function nextPage(jev: JevClient, profile: Profile, job: Job, opts:
     }
     if (!moved) {
       const errors = await page.evaluate<string[]>("window.__awj.errors()");
+      const refusals = (r.refusals ?? 0) + 1;
+      if (refusals <= RUN.nextRetries) {
+        // The form says which boxes it objects to: those go back to the writer and the page is tried again. A form
+        // that says nothing was slow, or took the click as a first validation: its Next is pressed once more.
+        const blamed = fieldsBlamed(plan.fields, errors).filter((x) => !r.failed.some((y) => y.selector === x.selector));
+        trace(`${job.company}: "${next.text}" did not move the form (${refusals}), ${blamed.length ? `the page blames ${blamed.map((x) => x.label.slice(0, 30)).join(" | ")}` : errors.length ? "its errors name no box the tool knows" : "the page says nothing"}`);
+        if (blamed.length || !errors.length) return saveReport({ ...r, ready: false, refusals, failed: [...r.failed, ...blamed] });
+      }
       return hold(`the form did not move on after "${next.text}"${errors.length ? `: ${errors.slice(0, 3).join("; ").slice(0, 200)}` : ""}`);
     }
     await settle(page);

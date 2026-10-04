@@ -28,6 +28,15 @@ changed for a person using the tool and what changed for a contributor.
   opens a list under it is followed there.
 
 ### Changed
+- A form is not given up at the first trouble. A box that did not take
+  its value goes back to Claude with the reason (a list with no such
+  choice, a box showing something else), up to three rounds, as long as
+  a round changes something. Before, one failed dropdown ended the form
+  and the run moved to the next job.
+- A page whose Next does not move the form is put right and tried
+  again: the boxes the page's own errors name go back to Claude, and a
+  page that says nothing has its Next pressed once more. Only after two
+  tries is the form left for you.
 - The README and `docs/ACCOUNTS.md` say plainly that accounts (Workday)
   and the Google connection are in progress and off by default.
 - A box that already shows the value it is meant to hold is left alone.
@@ -36,6 +45,9 @@ changed for a person using the tool and what changed for a contributor.
   address and phone sections and emptied them.
 
 ### Fixed
+- "Do you require work authorization?" is read as a question about
+  sponsorship. It was read as "are you authorized", so the true answer
+  was refused and the form held.
 - A click in a long list waits for the list to stop moving under the
   pointer. On Workday's country list the click landed on the row beside
   the wanted one ("Cameroon" for "Canada"). It was caught and put right

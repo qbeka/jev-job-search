@@ -427,6 +427,15 @@ export async function noteApplied(ids: string[]): Promise<void> {
   });
 }
 
+/** True when a page still has boxes that did not take their value, and they are not the same ones, for the same reasons, as a round before. */
+export function askAgain(r: FillReport, seen: Set<string>): boolean {
+  if (r.state !== "filled" || r.stuck || !r.failed.length || r.resolution?.verdict === "skip") return false;
+  const now = r.failed.map((f) => `${f.selector}|${f.why}`).sort().join("\n");
+  if (seen.has(now)) return false;
+  seen.add(now);
+  return true;
+}
+
 /** Takes a form from its filled first page to its last: each page resolved, then the form's own Next. */
 async function walk(jev: JevClient, profile: Profile, e: QueueEntry, first: FillReport, o: RunOptions): Promise<FillReport> {
   let r = first;
@@ -434,6 +443,13 @@ async function walk(jev: JevClient, profile: Profile, e: QueueEntry, first: Fill
     // A form that could not be opened has nothing to resolve.
     if (r.state !== "filled") return r;
     r = await resolvePage(jev, profile, e, r, o.fresh);
+    // What did not take its value goes back to the writer with the reason (a list that has no such choice, a box that
+    // shows something else), instead of the form being given up. It stops when a round changes nothing.
+    const seen = new Set<string>();
+    for (let round = 1; round < RUN.resolveRounds && askAgain(r, seen); round++) {
+      if (!o.quiet) console.log(`${e.job.company}: ${r.failed.length} box(es) did not take their value. Asking Claude how to answer them (round ${round + 1}).`);
+      r = await resolvePage(jev, profile, e, r, true);
+    }
     if (!shouldAdvance(r)) return r;
     r = await nextPage(jev, forJob(profile, e), asJob(e), { dry: o.dry });
   }

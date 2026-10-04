@@ -42,6 +42,8 @@ export type FillReport = {
   /** How many of those answers came from the answer memory, and whether Claude had to be asked at all. */
   recalled?: number;
   writerCalled?: boolean;
+  /** How many times this page's Next was pressed and the form stayed where it was. */
+  refusals?: number;
   /** Which page of the form this report describes. A one-page form is page 1. */
   page: number;
   /** The fields of the pages before this one, as they were left. */
@@ -170,6 +172,22 @@ export function notOnScreen(planned: FillPlan["fields"], states: ControlState[])
   const gone = planned.filter((_, i) => states[i] !== "on").length;
   if (gone <= Math.max(FORM.maxSwitchedOff, Math.floor(planned.length * FORM.switchedOffShare))) return [];
   return [{ selector: "form", why: `${gone} of the form's ${planned.length} boxes were not on screen when the page was read back, so nothing on it is confirmed` }];
+}
+
+/**
+ * The boxes a page's own error messages name. A form that will not move on usually says which box
+ * it objects to, by its label; those boxes go back to the writer with the form's words.
+ */
+export function fieldsBlamed(planned: Pick<FillPlan["fields"][number], "selector" | "label">[], errors: string[]): { selector: string; label: string; why: string }[] {
+  const bare = (s: string) => s.toLowerCase().replace(/\(required\)|[*✱:]/g, " ").replace(/\s+/g, " ").trim();
+  const out: { selector: string; label: string; why: string }[] = [];
+  for (const said of errors) {
+    for (const f of planned) {
+      const label = bare(f.label);
+      if (label.length >= 4 && bare(said).includes(label) && !out.some((x) => x.selector === f.selector)) out.push({ selector: f.selector, label: f.label, why: `the form would not move on and said: "${said.slice(0, 160)}"` });
+    }
+  }
+  return out;
 }
 
 type Open = Pick<FillReport, "state" | "drafts" | "reviews" | "failed" | "missingRequired">;

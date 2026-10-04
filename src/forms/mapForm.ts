@@ -90,7 +90,9 @@ const PLAN_VERSION = 2;
 /** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
 const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
 const AUTH_Q = /authori[sz]ed to work|legally (?:authori[sz]ed|eligible|entitled|permitted|able) to work|eligible to work|right to work|work authori[sz]ation|legally work/i;
-const SPONSOR_Q = /sponsor/i;
+// "Do you require work authorization?" asks whether the employer has to arrange one: that is sponsorship, in other words.
+const SPONSOR_Q = /sponsor|\b(?:require|need)s?\b[^.?]{0,25}\b(?:work|employment) (?:authori[sz]ation|visa|permit)/i;
+const NEEDS_PERMIT_Q = /\b(?:require|need)s?\b[^.?]{0,25}\b(?:work|employment) (?:authori[sz]ation|visa|permit)/i;
 /** A tick that accepts something: terms, an agreement, a notice. */
 const AGREEMENT_Q = /\b(agree|agreement|acknowledg|consent|terms|privacy|arbitration|attest|certify|accept)/i;
 /** Ticks that say the application is true or that a privacy notice was read: every application needs them. */
@@ -108,8 +110,8 @@ export function categoryOf(f: Pick<DumpedField, "label" | "section" | "hint" | "
   const sponsor = SPONSOR_Q.test(words);
   const auth = AUTH_Q.test(words);
   // "Authorized to work without sponsorship" is a question about authorization; "will you require sponsorship" is about sponsorship.
-  if (auth && (!sponsor || /without (?:the need for |requiring |needing )?(?:visa )?sponsor/i.test(words))) return "authorization";
-  if (sponsor && !auth) return "sponsorship";
+  if (auth && !NEEDS_PERMIT_Q.test(words) && (!sponsor || /without (?:the need for |requiring |needing )?(?:visa )?sponsor/i.test(words))) return "authorization";
+  if (sponsor && (!auth || NEEDS_PERMIT_Q.test(words))) return "sponsorship";
   return "general";
 }
 
