@@ -11,7 +11,13 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+- A job a search skipped for one reason and now skips for another shows
+  the reason that holds today. Before, a Workday job that was rated after
+  you set its employer up, and skipped by the rating, still said it needed
+  an account.
+- `data/queue.json.bak`, the copy kept when the queue is rewritten, is
+  git-ignored like the queue itself.
 
 ## [1.4.1] - 2026-10-03
 

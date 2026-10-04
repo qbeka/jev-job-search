@@ -159,8 +159,11 @@ export function entryFor(job: Job, fit: FitResult | null, preFilterReason: strin
     response: null,
   };
   if (!previous) return fresh;
-  // Keep what a run or a person decided, and the history; refresh the job and rating.
-  const keepStatus = KEPT_ON_REDISCOVERY.includes(previous.status) && !(previous.status === "skipped" && fresh.status === "queued" && previous.preFilterReason);
+  // Keep what a run or a person decided, and the history; refresh the job and rating. A skip the search itself
+  // decided is the search's to decide again: the job may be wanted now, or skipped for another reason, and the
+  // reason on the record has to be the one that holds today.
+  const bySearch = previous.status === "skipped" && (previous.statusReason === previous.preFilterReason || previous.statusReason === (previous.fit?.skipReason ?? null) || /^score .* below threshold$/.test(previous.statusReason ?? ""));
+  const keepStatus = KEPT_ON_REDISCOVERY.includes(previous.status) && !bySearch;
   return {
     ...fresh,
     status: keepStatus ? previous.status : fresh.status,

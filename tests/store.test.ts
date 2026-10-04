@@ -129,4 +129,20 @@ describe("a search merged into the queue", () => {
     expect(kept[0]?.job.description).toBe("what the job is");
     expect(KEPT_ON_REDISCOVERY).not.toContain("queued");
   });
+
+  it("decides again what a search itself skipped, and shows the reason that holds today", () => {
+    const skip = { ...fit, decision: "skip" as const, skipReason: "not a software role" };
+    // Skipped once because its board wanted an account. Now the account is there.
+    const walled = entryFor(job(8), null, "workday (needs an account per company)");
+    expect(walled).toMatchObject({ status: "skipped", statusReason: "workday (needs an account per company)" });
+    // Rated and wanted: it is queued, with no reason left on it.
+    expect(entryFor(job(8), fit as never, null, walled)).toMatchObject({ status: "queued", statusReason: null });
+    // Rated and skipped for another reason: the record says that reason, not the old one.
+    expect(entryFor(job(8), skip as never, null, walled)).toMatchObject({ status: "skipped", statusReason: "not a software role" });
+    // The same for a job JEV skipped before and rates differently now.
+    expect(entryFor(job(8), fit as never, null, entryFor(job(8), skip as never, null)).status).toBe("queued");
+    // A skip a run or the person decided is theirs: the search leaves it and its reason alone.
+    const refused = { ...walled, statusReason: "the board refused a second application: you recently applied to this company" };
+    expect(entryFor(job(8), fit as never, null, refused)).toMatchObject({ status: "skipped", statusReason: refused.statusReason });
+  });
 });

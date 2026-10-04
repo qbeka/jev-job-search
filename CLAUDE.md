@@ -22,7 +22,7 @@ doctor` says what is in place and what to do next.
 - **No PII in git.** `data/profile.json`, `data/bank.json`,
   `data/voice.local.md`, the resume, `applications/all.csv`, `applications/applied.csv`,
   `applications/manual.csv`, `data/memory.json`, `data/knowledge.json`,
-  `data/queue.json`, `data/accounts.json`, `data/gmail.json` and everything
+  `data/queue.json` and its `.bak` copy, `data/accounts.json`, `data/gmail.json` and everything
   under `data/cache/` and `data/runs/` are git-ignored. `knowledge/sites.json` is tracked on purpose: it holds site
   names and kinds of controls, and `sanitize` keeps everything else out. Tests use `data/profile.example.json` only. Never paste real
   values into a fixture, a doc, source, or a commit message.
