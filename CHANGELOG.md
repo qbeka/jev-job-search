@@ -47,6 +47,16 @@ changed for a person using the tool and what changed for a contributor.
   hear about us?") is answered as "Job Board > the one". When the answer
   does not say which, the choices on offer go to the writer, and to you
   when the profile cannot settle it.
+- An option of a long Workday list is pressed on the option itself, not
+  at a point on the screen: the list moved between the press and the
+  release, and the row beside the wanted one was taken. What the list
+  shows is read back as before.
+- A dropdown that a form has put out of sight while it saves is waited
+  for instead of being reported as not found.
+- A list that only draws the rows in view is gone through to its end
+  when the wanted choice is not in sight.
+- A remembered answer that a list turned down is not given to that list
+  again. The question goes back to the writer with what the list offers.
 - A form whose boxes were not on screen when the page was read back is
   never called ready. On a real Workday form the page lay hidden for a
   moment after its lists were read; every box then looked switched off,

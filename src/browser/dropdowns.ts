@@ -82,6 +82,27 @@ async function steadyPoint(page: Page, selector: string, label: string): Promise
   return { ...last, ok: false };
 }
 
+/** A control a form has put out of sight while it saves (Workday hides the page for a moment) is waited for, a little. */
+async function whenOn(page: Page, selector: string): Promise<void> {
+  const started = Date.now();
+  for (;;) {
+    const state = await page.awj<string>("state", selector).catch(() => "missing");
+    if (state === "on" || Date.now() - started > (state === "off" ? BROWSER.optionsMs : BROWSER.optionsMs / 4)) return;
+    await sleep(BROWSER.pollMs);
+  }
+}
+
+/** The rest of a list that only draws the rows in view: it is moved down a screen at a time until `enough`, or its end. */
+async function restOfList(page: Page, selector: string, seen: string[], enough: (opts: string[]) => boolean): Promise<string[]> {
+  const all = [...seen];
+  for (let screen = 0; screen < FORM.maxListScreens && !enough(all); screen++) {
+    if (!(await page.awj<boolean>("scrollOptions", selector))) break;
+    await sleep(BROWSER.pollMs);
+    for (const o of await page.awj<string[]>("options", selector)) if (!all.includes(o)) all.push(o);
+  }
+  return all;
+}
+
 /** With the trace on, the shape of a control whose list did not give the wanted value, taken while the list is still open. */
 async function sketch(page: Page, selector: string): Promise<void> {
   if (process.env.AWJ_TRACE) trace(`  ${selector}: ${await page.awj<string>("sketch", selector).catch(() => "no sketch")}`);
@@ -178,6 +199,7 @@ async function fillDropdownDirect(page: Page, selector: string, value: string, h
  * Returns why it failed, or null, and which way set it.
  */
 export async function fillDropdown(page: Page, selector: string, value: string, hints: string[], byClicking = false): Promise<{ why: string | null; method: "script" | "clicked" }> {
+  await whenOn(page, selector);
   if (!byClicking) {
     const direct = await fillDropdownDirect(page, selector, value, hints);
     if (direct) return { why: null, method: "script" };
@@ -226,25 +248,35 @@ async function clickAndPick(page: Page, selector: string, whole: string, hints: 
   }
   // Finding the option scrolls it into view, and a list drawn beside its box moves with the box a moment later.
   // The point is read again once the page has settled, so the click lands on this row and not the one below.
-  const p = await steadyPoint(page, selector, choice);
-  if (!p.ok) {
-    await closeDropdown(page);
-    return `option "${choice}" could not be clicked`;
+  let shown = "";
+  // One kind of list is pressed on the option itself (see pressOption). If that took, there is nothing to click.
+  if (await page.awj<boolean>("pressOption", selector, choice).catch(() => false)) {
+    await sleep(BROWSER.pollMs);
+    shown = (await shownValues(page, [selector]))[0] ?? "";
   }
-  await page.click(p.x, p.y);
-  await sleep(BROWSER.pollMs);
-  let shown = (await shownValues(page, [selector]))[0] ?? "";
+  if (!shown || !showsValue(choice, shown)) {
+    const p = await steadyPoint(page, selector, choice);
+    if (!p.ok) {
+      await closeDropdown(page);
+      return `option "${choice}" could not be clicked`;
+    }
+    await page.click(p.x, p.y);
+    await sleep(BROWSER.pollMs);
+    shown = (await shownValues(page, [selector]))[0] ?? "";
+  }
   // A choice that is a heading opens the list under it (Workday's "How did you hear about us?"). The pick is made
   // there when the wanted value, or the one thing on offer, is in it. Anything else is left for the person, with what was offered.
   for (let level = 0; !shown && level < FORM.maxListLevels; level++) {
-    const under = await waitOptions(page, selector, false);
+    let under = await waitOptions(page, selector, false);
     if (!under.length || under.join("|") === opts.join("|")) break;
     const named = deeper[level];
+    // A long list draws only the rows in view. It is gone through until the wanted choice shows, or to its end.
+    if (under.length > 1) under = await restOfList(page, selector, under, (seen) => pickOption(seen, named ?? value, hints) !== null);
     const next = named ? pickOption(under, named, hints) : (pickOption(under, value, hints) ?? (under.length === 1 ? (under[0] ?? null) : null));
     if (!next) {
       await sketch(page, selector);
       await closeDropdown(page);
-      return `"${choice}" opens a list of its own${named ? `, and "${named}" is not in it` : ""}. The answer is one of these, written as "${choice} > the one": ${under.slice(0, FORM.maxOptionsForJev).join(" | ")}`;
+      return `"${choice}" opens a list of its own${named ? `, and "${named}" is not in it` : ""}. The answer is one of these, written as "${choice} > the one": ${under.slice(0, FORM.maxListed).join(" | ")}`;
     }
     const at = await steadyPoint(page, selector, next);
     if (!at.ok) break;

@@ -118,6 +118,9 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
   }
 }
 
+/** What a list says when the answer it was given is not one of its choices. */
+export const UNFIT = /opens a list of its own|no option matches/;
+
 /** Fills the page the tab shows, from its dump, and reports what the page holds afterwards. */
 async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, d: FieldsDump, at: { page: number; earlier: FieldReport[]; started: number; jevCostUsd?: number; signal?: AbortSignal }): Promise<FillReport> {
   await readDropdownOptions(page, d.fields);
@@ -424,7 +427,11 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
     const useMemory = MEMORY.enabled && !opts.fresh;
     const mem = useMemory ? loadMemory() : null;
     // The same form with the same open fields was resolved before: what was read then is what goes in now.
-    const sameForm = mem ? recallForm(mem, memoryKey, fingerprint, openFields) : null;
+    // A list that turned an answer down has shown that the remembered answer does not fit it. That question goes to the
+    // writer again, with what the list offers, and the form is not taken as the same one resolved before.
+    const turnedDown = new Set(openFields.filter((f) => UNFIT.test(f.why)).map((f) => f.selector));
+    const askMemory = openFields.filter((f) => !turnedDown.has(f.selector));
+    const sameForm = mem && !turnedDown.size ? recallForm(mem, memoryKey, fingerprint, openFields) : null;
     let recalled = new Map<string, Recalled>();
     let resolution: Resolution;
     if (sameForm) {
@@ -432,9 +439,9 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
       recalled = new Map(sameForm.answers.map((a) => [a.selector, { value: a.value, reusable: a.reusable, source: "same form", from: company }]));
     } else {
       if (mem) {
-        recalled = recallSameFields(mem, memoryKey, fingerprint, openFields);
-        for (const [selector, hit] of recallExact(mem, fingerprint, company, openFields.filter((f) => !recalled.has(f.selector)))) recalled.set(selector, hit);
-        const rest = openFields.filter((f) => !recalled.has(f.selector));
+        recalled = recallSameFields(mem, memoryKey, fingerprint, askMemory);
+        for (const [selector, hit] of recallExact(mem, fingerprint, company, askMemory.filter((f) => !recalled.has(f.selector)))) recalled.set(selector, hit);
+        const rest = askMemory.filter((f) => !recalled.has(f.selector));
         if (opts.jev && rest.length) {
           // A question worded another way: JEV says whether it is the same question. If it cannot be asked, Claude answers as before.
           const similar = await recallSimilar(opts.jev, mem, fingerprint, company, rest, `same-question:${jobId}`).catch(() => new Map<string, Recalled>());

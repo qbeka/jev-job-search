@@ -1,5 +1,5 @@
 // Runs inside the page through the fill runner (src/browser/formRunner.ts).
-// Installs window.__awj: small read-only helpers plus the two writes the
+// Installs window.__awj: small read-only helpers plus the few writes the
 // runner cannot do with real input events. Nothing here is page-supplied code.
 (() => {
   const q = (s) => document.querySelector(s);
@@ -201,6 +201,36 @@
         }
       }
       return `${why}${dialogs.length ? `; over the page: ${dialogs.join(" | ")}` : ""}; url ${location.pathname.slice(-60)}`;
+    },
+    /**
+     * Presses one option of an open Workday list from script, on the option itself. A real click goes
+     * to a point, and Workday's long lists move under the pointer between the press and the release,
+     * so the row beside the wanted one is taken. False when this is not such a list: the runner then
+     * clicks as it does everywhere else. What the list shows afterwards is read back either way.
+     */
+    pressOption(sel, label) {
+      if (!document.querySelector('[data-automation-id="applyFlowPage"]')) return false;
+      const o = optionEls(sel).find((x) => text(x) === label);
+      if (!o || o.tagName !== "LI") return false;
+      o.scrollIntoView({ block: "nearest", behavior: "instant" });
+      const r = o.getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 };
+      o.dispatchEvent(new MouseEvent("mousedown", at));
+      o.dispatchEvent(new MouseEvent("mouseup", at));
+      o.click();
+      return true;
+    },
+    /** Moves an open list one screen further down, for a list that only draws the rows in view. False when it is at its end, or does not scroll. */
+    scrollOptions(sel) {
+      const last = optionEls(sel).pop();
+      for (let n = last ? last.parentElement : null; n && n !== document.body; n = n.parentElement) {
+        if (n.scrollHeight > n.clientHeight + 4) {
+          const before = n.scrollTop;
+          n.scrollTop = before + Math.max(40, Math.floor(n.clientHeight * 0.8));
+          return n.scrollTop > before;
+        }
+      }
+      return false;
     },
     /** True for a box that only searches once Enter is pressed (Workday's search-and-pick box). */
     searchesOnEnter(sel) {
