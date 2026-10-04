@@ -12,6 +12,10 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Added
+- `fieldAlso` in a profile's education entry: other names the same field
+  of study goes by. A list that has no "Computing Science" is offered
+  "Computer Science" next, instead of the form waiting for a second
+  look. A box that takes any text still gets the profile's own word.
 - Sixteen company boards with offices in Vancouver and Western Canada
   are polled on every search (Hootsuite, Later, AbCellera, Kabam, Klue,
   Trulioo, Jobber and others), each checked against its public board

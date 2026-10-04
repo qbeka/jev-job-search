@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ProfileSchema } from "../src/profile/schema.js";
 import { PROFILE_KEYS, profileFacts, valueFor } from "../src/profile/fieldKeys.js";
-import { approvesAgreements, authForCountry, categoryOf, educationDatePlan, employmentDatePlan, fileBoxWants, gateAnswer, hasChoosableOptions, isSlotChoice, planField, questionsFor, sectionOf, valueForJob } from "../src/forms/mapForm.js";
+import { alternatesFor, approvesAgreements, authForCountry, categoryOf, educationDatePlan, employmentDatePlan, fileBoxWants, gateAnswer, hasChoosableOptions, isSlotChoice, planField, questionsFor, sectionOf, valueForJob } from "../src/forms/mapForm.js";
 import { FieldsDump, isApplicationForm, type DumpedField } from "../src/forms/fields.js";
 import type { Job } from "../src/jobs/normalize.js";
 
@@ -290,5 +290,18 @@ describe("a question about needing a work authorization", () => {
     expect(q("Will you now or in the future require sponsorship for employment visa status?")).toBe("sponsorship");
     expect(q("Are you legally authorized to work in the United States?")).toBe("authorization");
     expect(q("Are you authorized to work in Canada without requiring sponsorship?")).toBe("authorization");
+  });
+});
+
+describe("a field of study a list knows by another name", () => {
+  const first = profile.education[0];
+  if (!first) throw new Error("the example profile has no education");
+  const withAlso = { ...profile, education: [{ ...first, fieldAlso: ["Computer Science"] }] } as typeof profile;
+
+  it("is offered to a list under the names the profile gives, and to nothing else", () => {
+    expect(alternatesFor({ key: "major", kind: "combobox" }, withAlso)).toEqual({ alternates: ["Computer Science"] });
+    expect(alternatesFor({ key: "major", kind: "text" }, withAlso)).toEqual({});
+    expect(alternatesFor({ key: "school", kind: "combobox" }, withAlso)).toEqual({});
+    expect(alternatesFor({ key: "major", kind: "combobox" }, { ...profile, education: [{ ...first, fieldAlso: undefined }] } as typeof profile)).toEqual({});
   });
 });

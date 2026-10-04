@@ -105,7 +105,8 @@ export const FillPlan = z.object({
   url: z.string(),
   fields: z.array(PlannedField),
   /** Fields the browser script should apply, already filtered to action = fill. */
-  fills: z.array(z.object({ selector: z.string(), kind: FieldKind, value: z.string() })),
+  /** alternates: other wordings of the same value, for a list that does not have the first. picked: the option a list took. */
+  fills: z.array(z.object({ selector: z.string(), kind: FieldKind, value: z.string(), alternates: z.array(z.string()).optional(), picked: z.string().optional() })),
   uploads: z.array(z.object({ selector: z.string(), path: z.string() })),
   drafts: z.array(z.object({ id: z.string(), selector: z.string(), label: z.string(), hint: z.string(), maxLength: z.number().nullable(), intent: z.string() })),
   reviews: z.array(z.object({ id: z.string(), selector: z.string(), kind: FieldKind, label: z.string(), options: z.array(z.string()), why: z.string() })),

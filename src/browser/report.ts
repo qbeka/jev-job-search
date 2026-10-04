@@ -14,7 +14,7 @@ import type { ControlState } from "./session.js";
 import type { WaitingFor } from "../jobs/queue.js";
 
 /** picked: the option a dropdown took for the value, in the list's own words ("Canada +1" for "+1"). It is what the box is then expected to show. */
-export type Fill = { selector: string; kind: string; value: string; picked?: string };
+export type Fill = { selector: string; kind: string; value: string; picked?: string | undefined; /** Other wordings of the same value, tried in order on a list that does not have the first. */ alternates?: string[] | undefined };
 export type FieldReport = { label: string; required: boolean; action: string; shown: string; note: string | null };
 export type TakeHome = { text: string; url: string };
 export type FillReport = {

@@ -48,6 +48,8 @@ export const ProfileSchema = z.object({
         school: z.string(),
         degree: z.string(),
         field: z.string(),
+        /** Other names the same field goes by, tried in this order on a list that does not have `field` ("Computer Science" for "Computing Science"). A box that takes any text still gets `field`. */
+        fieldAlso: z.array(z.string()).optional(),
         minor: z.string().optional(),
         startMonth: z.number().int().min(1).max(12),
         startYear: z.number().int(),

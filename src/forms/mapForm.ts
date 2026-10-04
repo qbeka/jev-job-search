@@ -85,7 +85,7 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
 }
 
 /** Raised whenever the gates below change, so a plan cached under the old rules is not reused. */
-const PLAN_VERSION = 3;
+const PLAN_VERSION = 4;
 
 /** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
 const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
@@ -302,6 +302,15 @@ export function isSlotChoice(f: DumpedField): boolean {
 /** Typing a name to sign an agreement is the candidate's act, not the tool's. An NDA is theirs to read first, whatever the box looks like. */
 const SIGNATURE_LABEL = /\bNDA\b|non-?disclosure|e-?signature|electronic signature|(typ(e|ing)|enter(ing)?) your (full |legal )*name/i;
 
+/**
+ * Other wordings a list may know a planned value by. Today that is the field of study, whose other
+ * names the profile gives. Only a list gets them: a box that takes any text is given the profile's own word.
+ */
+export function alternatesFor(p: Pick<PlannedField, "key" | "kind">, profile: Profile): { alternates?: string[] } {
+  const also = p.key === "major" && p.kind === "combobox" ? profile.education[0]?.fieldAlso : undefined;
+  return also?.length ? { alternates: also } : {};
+}
+
 let plans: KeyedCache<FillPlan> | null = null;
 
 /**
@@ -402,7 +411,10 @@ async function mapFormFresh(jev: JevClient, profile: Profile, job: Job, dump: Fi
     jobId: job.id,
     url: dump.url,
     fields: ordered,
-    fills: ordered.filter((p) => p.action === "fill" && p.value !== null).map((p) => ({ selector: p.selector, kind: p.kind, value: p.value as string })),
+    fills: ordered
+      .filter((p) => p.action === "fill" && p.value !== null)
+      // A list may know the field of study by another name. The profile says which names are the same field.
+      .map((p) => ({ selector: p.selector, kind: p.kind, value: p.value as string, ...alternatesFor(p, profile) })),
     uploads: ordered.filter((p) => p.action === "upload").map((p) => ({ selector: p.selector, path: p.value as string })),
     drafts: ordered.filter((p) => p.action === "draft").map((p) => {
       const f = dump.fields.find((x) => x.id === p.id) as DumpedField;

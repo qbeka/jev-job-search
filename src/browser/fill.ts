@@ -69,7 +69,13 @@ export async function applyFills(page: Page, wanted: Fill[], profile: Profile, g
   }
   for (const f of fills.filter((x) => x.kind === "combobox")) {
     const t = Date.now();
-    const { why, method } = await fillDropdown(page, f.selector, f.value, hints, guide?.prefer(f.selector) === "clicked", f);
+    let { why, method } = await fillDropdown(page, f.selector, f.value, hints, guide?.prefer(f.selector) === "clicked", f);
+    // A list that has no such choice is offered the other names the profile gives for the same thing, in order.
+    for (const other of why && NO_SUCH_CHOICE.test(why) ? (f.alternates ?? []) : []) {
+      ({ why, method } = await fillDropdown(page, f.selector, other, hints, guide?.prefer(f.selector) === "clicked", f));
+      trace(`dropdown ${f.selector} tried "${other}" instead${why ? `: ${why}` : ""}`);
+      if (!why) break;
+    }
     if (why) failed.push({ selector: f.selector, why });
     else how.set(f.selector, method);
     await page.writesSettled(BROWSER.saveMs);
@@ -129,6 +135,8 @@ export async function applyFills(page: Page, wanted: Fill[], profile: Profile, g
   }
   return failed;
 }
+
+const NO_SUCH_CHOICE = /^no option matches/;
 
 export const TYPED_KINDS = new Set(["text", "email", "tel", "url", "number", "textarea"]);
 

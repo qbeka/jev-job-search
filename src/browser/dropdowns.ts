@@ -212,7 +212,7 @@ export async function fillDropdown(page: Page, selector: string, value: string, 
 }
 
 /** Where a dropdown fill says which option it took for the value. */
-export type Picked = { picked?: string };
+export type Picked = { picked?: string | undefined };
 
 export function fillDropdownByClicking(page: Page, selector: string, value: string, hints: string[], out?: Picked): Promise<string | null> {
   return inFront(page, () => clickAndPick(page, selector, value, hints, out));
