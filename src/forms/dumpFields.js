@@ -384,6 +384,12 @@
     } else {
       f.value = el.value || f.value || "";
     }
+    // Workday names every answer list of a questionnaire "One Required". The question above it is what a person reads.
+    // Once a choice is made the list is named after it ("No Required"), which says even less.
+    if (f.section && (/^(select )?one( required)?$/i.test(f.label.trim()) || (FLOW && el.matches(MENU_BUTTON) && /\srequired$/i.test(f.label.trim())))) {
+      if (/required/i.test(f.label)) f.required = true;
+      f.label = f.section;
+    }
     fields.push(f);
     dumped.add(el);
     elementOf.set(f, el);

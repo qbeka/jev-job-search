@@ -260,7 +260,7 @@ Jobs come from public lists on GitHub (the SimplifyJobs internship and new-grad 
 
 ### Jobs that want an account
 
-> **In progress.** Two parts of the tool are still being built and are off by default: applying on boards that want an account (Workday, with `/accounts`), and the Google connection (Gmail, for verification emails and for `/inbox`). On the one real Workday form it has been tried on, the sign-in and the first page work and the later pages do not yet. The Gmail connection has not been run against a real mailbox. Until this note is gone, use the tool on the boards that need no account: Greenhouse, Lever, Ashby and the others listed in [docs/SOURCES.md](docs/SOURCES.md).
+> **In progress.** Two parts of the tool are still being built and are off by default: applying on boards that want an account (Workday, with `/accounts`), and the Google connection (Gmail, for verification emails and for `/inbox`). One real Workday application (a six-step form at one employer) has been taken from the sign-in to a confirmed submission; other employers lay their forms out differently and are untested. The Gmail connection has not been run against a real mailbox. Until this note is gone, use the tool on the boards that need no account: Greenhouse, Lever, Ashby and the others listed in [docs/SOURCES.md](docs/SOURCES.md).
 
 Every employer on Workday keeps its own accounts, and that is a large share of all postings. The tool skips them until you set an employer up, and there are three ways, from the simplest:
 

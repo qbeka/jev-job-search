@@ -218,9 +218,55 @@ export function fillDropdownByClicking(page: Page, selector: string, value: stri
   return inFront(page, () => clickAndPick(page, selector, value, hints, out));
 }
 
+/** The option that is the wanted item itself: the same words, or the same words with an ending that names nothing new ("React.js", "C (Programming Language)"). Never another thing that starts the same ("C#", "Python IDLE"). */
+export function sameItem(options: string[], item: string): string | null {
+  const want = norm(item);
+  const fits = options.filter((o) => norm(o) === want || (norm(o).startsWith(want) && /^(\.[a-z]{1,4}$| \()/.test(norm(o).slice(want.length))));
+  return fits.sort((a, b) => a.length - b.length)[0] ?? null;
+}
+
+/**
+ * A search-and-pick box that takes several items (Workday's skills): each wanted item is searched
+ * for and picked on its own, a few of them, and an item the list does not have is left out. What
+ * an earlier visit left in the box that is none of them is taken off first.
+ */
+async function pickMany(page: Page, selector: string, items: string[], out?: Picked): Promise<string | null> {
+  const held = async () => ((await shownValues(page, [selector]))[0] ?? "").split(/\s*,\s*/).filter(Boolean);
+  for (let i = 0; i < FORM.maxListPicks * 2; i++) {
+    const p = await page.awj<Point>("stalePill", selector, items);
+    if (!p.ok) break;
+    await page.click(p.x, p.y);
+    await sleep(BROWSER.pollMs * 2);
+  }
+  for (const item of items.slice(0, FORM.maxListPicks)) {
+    if (sameItem(await held(), item)) continue;
+    if (!(await openDropdown(page, selector))) return "control not found";
+    if (!(await page.awj<boolean>("hasFocus", selector)) && !(await page.awj<boolean>("focus", selector))) break;
+    await page.type(item);
+    await page.key("Enter");
+    const opts = await waitOptions(page, selector, true, (seen) => sameItem(seen, item) !== null);
+    const choice = sameItem(opts, item);
+    const p = choice ? await steadyPoint(page, selector, choice) : null;
+    if (p?.ok) {
+      await page.click(p.x, p.y);
+      await sleep(BROWSER.pollMs);
+    }
+    if (await page.awj<boolean>("hasFocus", selector)) for (let i = 0; i < item.length; i++) await page.key("Backspace");
+    await closeDropdown(page);
+  }
+  const now = await held();
+  if (!now.length) return `none of "${items.slice(0, 3).join(", ")}" is on the list`;
+  if (out) out.picked = now.join(", ");
+  return null;
+}
+
 async function clickAndPick(page: Page, selector: string, whole: string, hints: string[], out?: Picked): Promise<string | null> {
+  const items = whole.split(/\s*,\s*/).filter(Boolean);
+  if (items.length > 2 && (await page.awj<boolean>("searchesOnEnter", selector).catch(() => false))) return pickMany(page, selector, items, out);
   // "Heading > Choice" names a choice in the list a heading opens. The first step is picked here, the rest under it.
   const [value = whole, ...deeper] = whole.split(CHOICE_PATH);
+  /** What the box held before anything was clicked. */
+  const before = (await shownValues(page, [selector]).catch(() => [] as string[]))[0] ?? "";
   if (!(await openDropdown(page, selector))) return "control not found";
   let opts = await waitOptions(page, selector, false);
   if (!opts.length) {
@@ -255,14 +301,17 @@ async function clickAndPick(page: Page, selector: string, whole: string, hints: 
   // The point is read again once the page has settled, so the click lands on this row and not the one below.
   let shown = "";
   // One kind of list is pressed on the option itself (see pressOption). If that took, there is nothing to click.
-  if (await page.awj<boolean>("pressOption", selector, choice).catch(() => false)) {
+  const pressed = await page.awj<boolean>("pressOption", selector, choice).catch(() => false);
+  if (pressed) {
     // The box takes a moment to show the pick.
     for (const deadline = Date.now() + BROWSER.optionsMs / 4; Date.now() < deadline && !showsValue(choice, shown); ) {
       await sleep(BROWSER.pollMs);
       shown = (await shownValues(page, [selector]))[0] ?? "";
     }
   }
-  if (!shown || !showsValue(choice, shown)) {
+  // A heading that was pressed shows nothing in the box: its list has given way to the one under it.
+  const opened = pressed && !(await page.awj<string[]>("options", selector)).includes(choice);
+  if (!opened && (!shown || !showsValue(choice, shown))) {
     const p = await steadyPoint(page, selector, choice);
     if (!p.ok) {
       await closeDropdown(page);
@@ -272,6 +321,14 @@ async function clickAndPick(page: Page, selector: string, whole: string, hints: 
     await sleep(BROWSER.pollMs);
     shown = (await shownValues(page, [selector]))[0] ?? "";
   }
+  if (shown && shown === before && !showsValue(choice, shown)) {
+    // The box still shows what it held: the click was on a heading, and what the box holds may be one of the choices
+    // under that very heading, picked on an earlier visit. Then the box is right as it is.
+    const under = await waitOptions(page, selector, false);
+    const all = under.length > 1 ? await restOfList(page, selector, under, (seen) => seen.includes(before)) : under;
+    void all;
+    shown = "";
+  }
   // A choice that is a heading opens the list under it (Workday's "How did you hear about us?"). The pick is made
   // there when the wanted value, or the one thing on offer, is in it. Anything else is left for the person, with what was offered.
   for (let level = 0; !shown && level < FORM.maxListLevels; level++) {
@@ -280,16 +337,20 @@ async function clickAndPick(page: Page, selector: string, whole: string, hints: 
     const named = deeper[level];
     // A long list draws only the rows in view. It is gone through until the wanted choice shows, or to its end.
     if (under.length > 1) under = await restOfList(page, selector, under, (seen) => pickOption(seen, named ?? value, hints) !== null);
-    const next = named ? pickOption(under, named, hints) : (pickOption(under, value, hints) ?? (under.length === 1 ? (under[0] ?? null) : null));
+    // Only a choice that is named is taken. The one row a list happens to show while it is still drawing is not an answer.
+    const next = pickOption(under, named ?? value, hints);
     if (!next) {
       await sketch(page, selector);
       await closeDropdown(page);
       return `"${choice}" opens a list of its own${named ? `, and "${named}" is not in it` : ""}. The answer is one of these, written as "${choice} > the one": ${under.slice(0, FORM.maxListed).join(" | ")}`;
     }
-    const at = await steadyPoint(page, selector, next);
-    if (!at.ok) break;
-    await page.click(at.x, at.y);
-    await sleep(BROWSER.pollMs);
+    // The option itself is pressed where the list allows it; a click at a point can land on the row beside it in a list that scrolls.
+    if (!(await page.awj<boolean>("pressOption", selector, next).catch(() => false))) {
+      const at = await steadyPoint(page, selector, next);
+      if (!at.ok) break;
+      await page.click(at.x, at.y);
+    }
+    await sleep(BROWSER.pollMs * 2);
     opts = under;
     choice = next;
     shown = (await shownValues(page, [selector]))[0] ?? "";

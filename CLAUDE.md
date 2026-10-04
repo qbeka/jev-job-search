@@ -46,7 +46,10 @@ doctor` says what is in place and what to do next.
   allows, only for an account in `data/accounts.json` or one the person's
   standing rule lets the tool make. Each account has its own password:
   made at random for a new account, or typed by the person for one they
-  had. With none stored the tool uses only a session the person started.
+  had. With none stored the tool uses only a session the person started,
+  or, for an employer where the person said so (`accounts browser`),
+  presses Sign In once the tool's own Chrome has filled in the password
+  they saved in it: nothing is typed and the box is never read.
   A rehearsal makes no account and asks for no verification email;
   `accounts setup` is the one command that does. A sign-in that was refused, or did not
   go through, is never retried and never leads to a new account: the

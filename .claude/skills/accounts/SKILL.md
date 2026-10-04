@@ -41,6 +41,7 @@ If something is set up, say what, what waits for them, and the next step.
 |---|---|
 | `/accounts signin <employer>` | Show `npx jev accounts signin <employer>` in a `bash` block. It opens the employer's page in the tool's Chrome window; they sign in there themselves. Tell them to click Run and then look at that window. |
 | `/accounts password <employer>` | Run `npx jev accounts password <employer>`. A window opens on their Mac; they type that employer's password there, twice. You never see it. With no employer it stores the one password they use on accounts they already had. |
+| `/accounts browser <employer>` | Only when they say they saved that employer's password in the tool's Chrome and want the tool to use it. Run `npx jev accounts browser <employer>`. The tool then presses Sign In once that browser has filled the page in; it types nothing and never reads the password. `--off` takes it back. |
 | `/accounts add workday` | The questions below. Run it with `--preview` first and read what it allows back to them. Save only after a yes, with exactly the flags they agreed to. |
 | `/accounts setup <employer>` | Show `npx jev accounts setup <employer>` in a `bash` block. It signs in, or makes the account. They click Run. |
 | `/accounts clear` | `npx jev accounts clear`, after they fixed what paused an account. |

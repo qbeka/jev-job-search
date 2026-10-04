@@ -64,6 +64,14 @@ const HOLDS = `function (selector) {
   return { value: password ? null : value, length: value.length, checked: !!el.checked, password };
 }`;
 
+const AUTOFILLED = `function (selector) {
+  let el = null;
+  try { el = document.querySelector(selector); } catch { el = null; }
+  if (!el) return false;
+  for (const mark of [":autofill", ":-webkit-autofill"]) { try { if (el.matches(mark)) return true; } catch { /* a browser that does not know the mark */ } }
+  return false;
+}`;
+
 const originOf = (url: string): string => {
   try {
     return new URL(url).origin;
@@ -95,6 +103,7 @@ export function cdpAuthPage(page: Page): AuthPage {
     type: (text) => inFront(page, () => page.type(text)),
     typeSecret: (secret: Secret) => inFront(page, () => page.type(secret.reveal())),
     holds: (selector) => page.call(HOLDS, selector),
+    autofilled: (selector) => page.call<boolean>(AUTOFILLED, selector),
     navigate: (url) => goto(page, url),
     wait: (ms) => sleep(ms),
     async follow(url, allowedOrigins) {

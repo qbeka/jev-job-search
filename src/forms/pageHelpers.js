@@ -210,8 +210,11 @@
      */
     pressOption(sel, label) {
       if (!document.querySelector('[data-automation-id="applyFlowPage"]')) return false;
-      const o = optionEls(sel).find((x) => text(x) === label);
-      if (!o || o.tagName !== "LI") return false;
+      const row = optionEls(sel).find((x) => text(x) === label);
+      // A plain list row, or the row of a search-and-pick list, whose own choice sits inside it.
+      const inPrompt = !!row && !!row.closest('[data-automation-id="activeListContainer"]');
+      if (!row || (row.tagName !== "LI" && !inPrompt)) return false;
+      const o = inPrompt ? row.querySelector('[data-automation-id="promptLeafNode"]') || row : row;
       o.scrollIntoView({ block: "nearest", behavior: "instant" });
       const r = o.getBoundingClientRect();
       const at = { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 };
@@ -231,6 +234,29 @@
         }
       }
       return false;
+    },
+    /**
+     * Where the delete button of a second copy of an attached file is, on a form that keeps every
+     * upload it was given (Workday keeps them across visits). Not ok when the file is there once.
+     */
+    extraCopy(name) {
+      const items = [...document.querySelectorAll('[data-automation-id="file-upload-item"]')].filter((i) => visible(i) && text(i).includes(name));
+      const button = items.length > 1 ? items[items.length - 1].querySelector('[data-automation-id="delete-file"], button[aria-label*="delete" i], button[aria-label*="remove" i]') : null;
+      return button && visible(button) ? center(button) : { x: 0, y: 0, ok: false };
+    },
+    /**
+     * Where to click to take off one picked item of a search-and-pick box that is none of the wanted ones:
+     * a whole list typed in as one item on an earlier visit, say. Not ok when every picked item is wanted.
+     */
+    stalePill(sel, wanted) {
+      const el = q(sel);
+      const prompt = el && el.closest(PROMPT);
+      if (!prompt) return { x: 0, y: 0, ok: false };
+      const names = wanted.map((w) => w.toLowerCase().trim()).filter(Boolean);
+      const isWanted = (t) => !t.includes(",") && names.some((w) => t === w || (t.startsWith(w) && /^(\.[a-z]{1,4}$| \()/.test(t.slice(w.length))));
+      const pill = [...prompt.querySelectorAll('[data-automation-id="selectedItem"]')].find((p) => visible(p) && !isWanted(text(p).toLowerCase()));
+      const charm = pill ? pill.querySelector('[data-automation-id="DELETE_charm"]') : null;
+      return charm && visible(charm) ? center(charm) : { x: 0, y: 0, ok: false };
     },
     /** True for a box that only searches once Enter is pressed (Workday's search-and-pick box). */
     searchesOnEnter(sel) {

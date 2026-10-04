@@ -92,6 +92,8 @@ export function showsValue(want: string, shown: string): boolean {
   const s = norm(shown);
   if (!s) return false;
   if (w === s) return true;
+  // A day or a month is the same number with or without its leading zero.
+  if (/^\d{1,2}$/.test(w) && /^\d{1,2}$/.test(s)) return Number(w) === Number(s);
   // A short answer, or a plain yes or no, is the whole of what the box shows, or its first word before a comma or a dash.
   if (w.length <= FORM.shortAnswerChars || /^(yes|no|true|false|none|n\/a)$/.test(w)) {
     return s.startsWith(w) && /^\s*[,.;:(\-\u2013]/.test(s.slice(w.length));

@@ -85,7 +85,7 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
 }
 
 /** Raised whenever the gates below change, so a plan cached under the old rules is not reused. */
-const PLAN_VERSION = 4;
+const PLAN_VERSION = 6;
 
 /** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
 const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
@@ -96,6 +96,17 @@ const NEEDS_PERMIT_Q = /\b(?:require|need)s?\b[^.?]{0,25}\b(?:work|employment) (
 /** A tick that accepts something: terms, an agreement, a notice. */
 const AGREEMENT_Q = /\b(agree|agreement|acknowledg|consent|terms|privacy|arbitration|attest|certify|accept)/i;
 /** Ticks that say the application is true or that a privacy notice was read: every application needs them. */
+/**
+ * The part of a date a box labelled Month, Day or Year takes, as a plain number. Null when the box
+ * is not one of those, or the value is not a date. A date that names only a month is its first day.
+ */
+export function datePart(label: string, value: string): string | null {
+  const which = /^\s*(month|mm|day|dd|year|yyyy)\s*\*?\s*$/i.exec(label)?.[1]?.toLowerCase();
+  const d = which ? toYmd(value) : null;
+  if (!which || !d) return null;
+  return String(which.startsWith("m") ? d.month : which.startsWith("d") ? d.day : d.year);
+}
+
 /** A box that says the person goes by a name other than their legal one. */
 const PREFERRED_NAME_BOX = /\b(i have|i use|i go by)\b[^.]{0,30}\b(preferred|different|another) name\b/i;
 const ROUTINE_AGREEMENT = /\b(privacy|true|accurate|correct|complete|information (?:i|provided|above)|data (?:protection|processing))/i;
@@ -514,6 +525,8 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
     let value = valueForJob(profile, job, key as FieldKey, f.label);
     // Workday lists a dial code under its country, "Canada (+1)", and many countries share one code. The country is the profile's own.
     if (value !== null && key === "phone_country_code" && f.widget === "workday-prompt" && profile.address.country) value = `${profile.address.country} (${value})`;
+    // A list takes one language: the first the profile names. A box that takes any text gets them all.
+    if (value !== null && key === "spoken_languages" && (f.kind === "combobox" || f.kind === "select") && profile.spokenLanguages[0]) value = profile.spokenLanguages[0].name;
     if (value === null) {
       if (key === "gpa") return { ...base, action: f.required ? "fill" : "skip", key, value: f.required ? gpaValue(profile) : null, confidence: a.confidence, note: f.required ? "GPA given only because the field is required" : "GPA not volunteered" };
       return { ...base, action: f.required ? "review" : "skip", key, value: null, confidence: a.confidence, note: f.required ? "required but the profile has no value" : null };
@@ -524,6 +537,9 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
       if (!day) return { ...base, action: "review", key, value: null, confidence: a.confidence, note: "the calendar needs a date, and the profile's value is not one" };
       return { ...base, action: "fill", key, value: isoOf(day), confidence: a.confidence, note };
     }
+    // A date asked for in three boxes (Workday's Month, Day, Year): each box gets its own part of the date.
+    const part = TEXT_KINDS.has(f.kind) ? datePart(f.label, value) : null;
+    if (part !== null) return { ...base, action: "fill", key, value: part, confidence: a.confidence, note };
     // A text box that names a date format gets the date written that way: typed as "May 2027", a masked box keeps "02/27/".
     return { ...base, action: "fill", key, value: TEXT_KINDS.has(f.kind) ? shapedForBox(value, `${f.placeholder} ${f.hint}`) : value, confidence: a.confidence, note };
   }

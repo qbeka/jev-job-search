@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ensureSignedIn, type AuthContext } from "../src/accounts/auth.js";
 import { askPassword } from "../src/accounts/ask.js";
 import { accountGate, adapterFor, capabilityFor } from "../src/accounts/capability.js";
-import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule } from "../src/accounts/commands.js";
+import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "../src/accounts/commands.js";
 import { AccountsFile, dayOf, loadAccounts, loadState, mutateState, stateOf } from "../src/accounts/config.js";
 import type { AuthSnapshot, VerificationFound, VerificationRequest, Verifier } from "../src/accounts/provider.js";
 import { EnvStore, envNameOf, generatePassword, itemFor, KeychainStore, MemoryStore, passwordProblems } from "../src/accounts/secrets.js";
@@ -347,6 +347,40 @@ describe("signing in", () => {
     // Once that employer's own password is stored, it is the one used.
     store.values.set(OWN, PASSWORD);
     expect((await ensureSignedIn(new FakeWorkday(ended.server), ctx())).ok).toBe(true);
+  });
+
+  it("presses Sign In when the person's own browser has filled in the password they saved, and only where they said so", async () => {
+    addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
+    store.values.clear();
+    const board = server({ account: { email: EMAIL, password: PASSWORD, verified: true } });
+    // The browser holds the password, but the person has not said the tool may use it: nothing is pressed.
+    const untold = new FakeWorkday(board);
+    untold.browserHolds = { email: EMAIL, password: PASSWORD };
+    expect(await ensureSignedIn(untold, ctx())).toMatchObject({ ok: false, waitingFor: "login" });
+    expect(untold.signInClicks).toBe(0);
+    // They said so. The tool presses Sign In once, types nothing, and is in.
+    expect(useBrowserPassword("acme", true, files).map((a) => a.browserPassword)).toEqual([true]);
+    const told = new FakeWorkday(board);
+    told.browserHolds = { email: EMAIL, password: PASSWORD };
+    const r = await ensureSignedIn(told, ctx());
+    expect(r.ok).toBe(true);
+    expect(told.typed).toEqual([]);
+    expect(told.signInClicks).toBe(1);
+    // A browser that filled nothing in leaves the sign-in to the person.
+    const empty = new FakeWorkday(board);
+    const none = await ensureSignedIn(empty, ctx());
+    expect(none).toMatchObject({ ok: false, status: "awaiting_user_action", waitingFor: "login" });
+    expect(!none.ok && none.reason).toMatch(/did not fill in a saved password/);
+    expect(empty.signInClicks).toBe(0);
+    // A saved password the employer refuses is pressed once, and the account is then left alone.
+    const wrong = new FakeWorkday(board);
+    wrong.browserHolds = { email: EMAIL, password: "Not-The-One-9!" };
+    expect(await ensureSignedIn(wrong, ctx())).toMatchObject({ ok: false, waitingFor: "login" });
+    expect(wrong.signInClicks).toBe(1);
+    const after = new FakeWorkday(board);
+    after.browserHolds = { email: EMAIL, password: PASSWORD };
+    expect((await ensureSignedIn(after, ctx())).ok).toBe(false);
+    expect(after.signInClicks).toBe(0);
   });
 
   it("makes no account and asks for no email in a rehearsal, and still signs in to an account the person has", async () => {

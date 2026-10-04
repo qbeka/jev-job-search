@@ -86,6 +86,7 @@ export function settleStep(prev: { sig: string; stable: number; countStable: num
 export async function settle(page: Page): Promise<void> {
   const started = Date.now();
   let state = { sig: "", stable: 0, countStable: 0 };
+  let waited = false;
   while (Date.now() - started < BROWSER.settleMs) {
     await sleep(BROWSER.pollMs);
     let sig = "-1";
@@ -97,8 +98,15 @@ export async function settle(page: Page): Promise<void> {
     state = settleStep(state, sig);
     const n = Number(sig.split(":")[0]);
     const enough = n >= 3 || Date.now() - started > BROWSER.emptyPageMs;
-    if (state.stable >= 3 && enough) break;
-    if (state.countStable >= BROWSER.settleCountPolls && enough) break;
+    const still = (state.stable >= 3 || state.countStable >= BROWSER.settleCountPolls) && enough;
+    if (!still) continue;
+    // A page that has stopped changing while its own requests are still out has not finished: a form that brings its
+    // sections and its saved draft in one by one (Workday) looks still between two of them. It is still only once they are in.
+    // Once only: a page that keeps sending something of its own (a heartbeat) must not hold the form up.
+    if (waited || (await page.writesSettled(0))) break;
+    waited = true;
+    await page.writesSettled(BROWSER.saveMs);
+    state = { sig: "", stable: 0, countStable: 0 };
   }
   trace(`settled in ${Date.now() - started}ms at ${state.sig}`);
 }

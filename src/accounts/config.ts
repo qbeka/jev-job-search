@@ -40,6 +40,12 @@ export const Account = z.object({
   /** The account-registration agreements the person approved, by name. "account_terms" is the terms box on the sign-up form. */
   agreements: z.array(z.string()).default([]),
   createdAt: z.string().nullable().default(null),
+  /**
+   * The person saved this employer's password in the tool's own Chrome and said the tool may use it.
+   * When that browser has filled the sign-in page, the tool presses Sign In. It types nothing and
+   * never reads the box, so the password stays between the browser and the employer.
+   */
+  browserPassword: z.boolean().optional(),
 });
 export type Account = z.infer<typeof Account>;
 

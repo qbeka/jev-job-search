@@ -11,6 +11,43 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added
+- A Workday application goes through every page to a confirmed
+  submission: tried on one employer's six-step form (information,
+  experience, two pages of questions, disclosures, review).
+- `/accounts browser <employer>`: where you saved an employer's password
+  in the tool's own Chrome, the tool presses Sign In once that browser
+  has filled the page in. It types nothing and never reads the password,
+  and a sign-in the employer refuses is not tried again.
+- `inspect <id> --text` prints the words the open page shows: a form's
+  own review page, for a last look before it is sent.
+- A skills box that takes several items gets each skill searched for and
+  picked on its own, and only a skill that is the same skill ("React.js"
+  for "React", never "Python IDLE" for "Python").
+
+### Changed
+- A date asked for in three boxes gets its month, day and year each in
+  its own box. A list of languages gets the first language the profile
+  names.
+- On a form that keeps a draft (Workday), a box the profile has nothing
+  for is emptied when an earlier visit left something in it, and a file
+  the draft already holds is not attached again; extra copies are
+  removed.
+- Workday's questionnaire lists are named by their question, not by
+  "One Required".
+
+### Fixed
+- A list never takes "the only row on offer": a list that was still
+  drawing showed one row, and it was picked. Only a choice that is named
+  is taken.
+- A page is read once it has come to rest and its own requests are in.
+  A page caught between two steps was read half of each, and an empty
+  one was called ready.
+- A day or a month is the same number with or without its leading zero.
+- A heading answered while the box held a choice under it is written
+  down as the whole path, so every later check reads the box the same
+  way.
+
 ## [1.5.0] - 2026-10-04
 
 ### Added

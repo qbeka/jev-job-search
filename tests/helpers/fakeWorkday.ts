@@ -140,6 +140,8 @@ export class FakeWorkday implements AuthPage {
     }
     if (selector === c.signIn && this.view === "sign_in") {
       this.signInClicks++;
+      // A click is what makes a browser hand its saved password to the page.
+      if (this.browserHolds && !this.boxes.email && !this.boxes.password) this.boxes = { ...this.boxes, email: this.browserHolds.email, password: this.browserHolds.password };
       const a = this.server.account;
       if (this.server.signInSays !== undefined) this.errors = this.server.signInSays ? [this.server.signInSays] : [];
       else if (a?.locked) this.errors = ["Your account has been locked. Try again later."];
@@ -199,6 +201,14 @@ export class FakeWorkday implements AuthPage {
   async typeSecret(secret: Secret): Promise<void> {
     this.typed.push({ box: this.focused, secret: true, origin: new URL(this.address).origin, text: "(secret)" });
     if (this.focused) this.boxes[this.focused] += secret.reveal();
+  }
+
+  /** What the person's own browser holds for this sign-in page, when they saved a password in it. It fills the boxes itself; the tool never reads them. */
+  browserHolds: { email: string; password: string } | null = null;
+
+  async autofilled(selector: string): Promise<boolean> {
+    const b = this.box(selector);
+    return !!this.browserHolds && this.view === "sign_in" && (b === "email" || b === "password") && this.boxes[b] === "";
   }
 
   async holds(selector: string): Promise<{ value: string | null; length: number; checked: boolean; password: boolean } | null> {

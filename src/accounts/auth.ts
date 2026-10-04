@@ -235,11 +235,26 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         const tries = state().attempts;
         if (tries.day === today && tries.count >= ACCOUNTS.maxLoginAttempts) return stop("awaiting_user_action", "login", `the tool tried to sign in ${tries.count} times today and leaves the account alone until tomorrow. Sign in yourself in the tool's window`);
         const password = stored();
-        if (!password) return stop("awaiting_user_action", "login", `no password is stored for ${ctx.tenant.tenant}, so the tool only uses a session you started. Sign in yourself in the tool's window, or store this employer's password: /accounts password ${ctx.tenant.tenant}`);
+        // With none stored, the person's own browser may hold it. Only where they said so, and only once the browser has
+        // filled the box itself: then Sign In is pressed, nothing is typed, and the box is never read.
+        const byBrowser = !password && !!account?.browserPassword && (await page.autofilled(adapter.controls.password).catch(() => false));
+        if (!password && !byBrowser) {
+          return stop(
+            "awaiting_user_action",
+            "login",
+            account?.browserPassword
+              ? `the browser did not fill in a saved password for ${ctx.tenant.tenant}. Sign in yourself in the tool's window`
+              : `no password is stored for ${ctx.tenant.tenant}, so the tool only uses a session you started. Sign in yourself in the tool's window, or store this employer's password: /accounts password ${ctx.tenant.tenant}`,
+          );
+        }
         triedLogin = true;
-        await enter(page, adapter.controls.email, email, allowed, "text");
-        await enter(page, adapter.controls.password, password, allowed, "password");
-        steps.push("typed the address and the password");
+        if (password) {
+          await enter(page, adapter.controls.email, email, allowed, "text");
+          await enter(page, adapter.controls.password, password, allowed, "password");
+          steps.push("typed the address and the password");
+        } else {
+          steps.push("the browser had filled in the password the person saved in it");
+        }
         setState({ attempts: { day: today, count: tries.day === today ? tries.count + 1 : 1 } });
         askedAt = now();
         await click(adapter.controls.signIn, "Sign In");

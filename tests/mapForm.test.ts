@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ProfileSchema } from "../src/profile/schema.js";
 import { PROFILE_KEYS, profileFacts, valueFor } from "../src/profile/fieldKeys.js";
-import { alternatesFor, approvesAgreements, authForCountry, categoryOf, educationDatePlan, employmentDatePlan, fileBoxWants, gateAnswer, hasChoosableOptions, isSlotChoice, planField, questionsFor, sectionOf, valueForJob } from "../src/forms/mapForm.js";
+import { alternatesFor, datePart, approvesAgreements, authForCountry, categoryOf, educationDatePlan, employmentDatePlan, fileBoxWants, gateAnswer, hasChoosableOptions, isSlotChoice, planField, questionsFor, sectionOf, valueForJob } from "../src/forms/mapForm.js";
 import { FieldsDump, isApplicationForm, type DumpedField } from "../src/forms/fields.js";
 import type { Job } from "../src/jobs/normalize.js";
 
@@ -303,5 +303,20 @@ describe("a field of study a list knows by another name", () => {
     expect(alternatesFor({ key: "major", kind: "text" }, withAlso)).toEqual({});
     expect(alternatesFor({ key: "school", kind: "combobox" }, withAlso)).toEqual({});
     expect(alternatesFor({ key: "major", kind: "combobox" }, { ...profile, education: [{ ...first, fieldAlso: undefined }] } as typeof profile)).toEqual({});
+  });
+});
+
+describe("a date asked for in three boxes", () => {
+  it("gives each box its own part, and a date that names only a month starts on its first day", () => {
+    expect(datePart("Month", "May 2027")).toBe("5");
+    expect(datePart("Day", "May 2027")).toBe("1");
+    expect(datePart("Year", "May 2027")).toBe("2027");
+    expect(datePart("Month*", "05/14/2027")).toBe("5");
+    expect(datePart("DD", "05/14/2027")).toBe("14");
+  });
+
+  it("leaves alone a box that is not one of the three, and a value that is not a date", () => {
+    expect(datePart("Start month and year", "May 2027")).toBeNull();
+    expect(datePart("Month", "as soon as possible")).toBeNull();
   });
 });

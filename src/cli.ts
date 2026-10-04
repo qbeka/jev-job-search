@@ -12,7 +12,7 @@ import { contextFingerprint } from "./answers/resolve.js";
 import { loadMemory, prune, saveMemory } from "./answers/memory.js";
 import { inspect, setValues } from "./browser/formRunner.js";
 import { loadReport, type Fill, type FillReport } from "./browser/report.js";
-import { closeJobTab, loadSession } from "./browser/session.js";
+import { closeJobTab, loadSession, pageFor } from "./browser/session.js";
 import { clearBrowsingData, closeTab, ensureBrowser, listTargets, newTab, Page, sleep } from "./browser/cdp.js";
 import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
@@ -26,7 +26,7 @@ import { formatInbox, recordReplies } from "./run/inbox.js";
 import { readInbox } from "./mail/status.js";
 import { gmailClient } from "./mail/gmail.js";
 import { installSchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
-import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule } from "./accounts/commands.js";
+import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
 import { signedInNow, signInFor } from "./accounts/gate.js";
 import { workdayParts } from "./sources/ats/workday.js";
@@ -445,7 +445,7 @@ type AccountsOptions = { email?: string; create?: boolean; terms?: boolean; veri
 
 program
   .command("accounts [action] [target]")
-  .description("Job-board accounts the tool may use (Workday today). With no action: what is set up. signin <employer> | add workday | add <link> | password [employer] | setup <employer> | clear | off | on | forget <employer or all>")
+  .description("Job-board accounts the tool may use (Workday today). With no action: what is set up. signin <employer> | add workday | add <link> | password [employer] | browser <employer> | setup <employer> | clear | off | on | forget <employer or all>")
   .option("--email <address>", "the address your accounts use. The default is the one in your profile")
   .option("--create", "experimental: the tool may make an account where the employer has none for you")
   .option("--terms", "the tool may tick the account terms box on the sign-up form")
@@ -462,6 +462,14 @@ program
     const show = () => console.log(describeAccounts(store).join("\n"));
     if (!action || action === "list" || action === "status" || action === "clear") {
       if (o.clear || action === "clear") console.log(`${clearPauses()} pause(s) lifted.`);
+      return show();
+    }
+    if (action === "browser") {
+      // The person saved an employer's password in the tool's own Chrome: the tool may press Sign In once that browser has filled it in.
+      if (!target) return console.log("Say which employer: /accounts browser <employer>. To take it back: /accounts browser <employer> --off");
+      const set = useBrowserPassword(target, !o.off);
+      if (!set.length) return console.log(`No account for ${target} yet. Sign in there once first: /accounts signin ${target}`);
+      console.log(o.off ? "The tool no longer signs in with a password saved in its Chrome there." : "When the tool's Chrome has filled in the password you saved there, the tool presses Sign In. It types nothing and never reads the password.");
       return show();
     }
     if (action === "on" || action === "off") {
@@ -627,7 +635,16 @@ program
 program
   .command("inspect <id>")
   .description("Show what a filled form holds right now, and any errors on the page")
-  .action(async (id: string) => {
+  .option("--text", "print the words the open page shows instead: a form's own review page, for a last look before it is sent")
+  .action(async (id: string, o: { text?: boolean }) => {
+    if (o.text) {
+      const page = await pageFor(id);
+      try {
+        return console.log((await page.evaluate<string>("window.__awj.pageText()")).replace(/\n{3,}/g, "\n\n").slice(0, RUN.inspectChars));
+      } finally {
+        page.close();
+      }
+    }
     const r = await inspect(id);
     for (const f of r.fields) console.log(`${f.required ? "*" : " "} ${f.action.padEnd(6)} ${f.label.slice(0, 90).padEnd(90)} ${f.shown.slice(0, 80)}`);
     if (r.errors.length) console.log(`errors: ${r.errors.join(" | ")}`);

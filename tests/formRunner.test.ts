@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { isFormWrite } from "../src/browser/cdp.js";
-import { closestOptions, pickOption } from "../src/browser/dropdowns.js";
+import { closestOptions, pickOption, sameItem } from "../src/browser/dropdowns.js";
 import { rightAlready, tookChoice } from "../src/browser/fill.js";
 import { askAgain } from "../src/run/pipeline.js";
 import { showsPicked } from "../src/util/dates.js";
@@ -244,6 +244,13 @@ describe("choices that sit close together", () => {
     expect(showsPicked("T6J 1B5", "T6J1B5")).toBe(true);
   });
 
+  it("takes a day or a month for the same with or without its leading zero, and nothing looser", () => {
+    expect(showsPicked("05", "5")).toBe(true);
+    expect(showsPicked("1", "01")).toBe(true);
+    expect(showsPicked("5", "15")).toBe(false);
+    expect(showsPicked("05", "6")).toBe(false);
+  });
+
   it("takes the last step of a path as what a list shows once it is picked", () => {
     expect(showsPicked("Job Board > Other", "Other")).toBe(true);
     expect(showsPicked("Job Board > Other", "LinkedIn")).toBe(false);
@@ -291,5 +298,16 @@ describe("a dropdown that took an option for its value", () => {
     expect(showsPlanned({ kind: "combobox", value: "+1", optionLabel: "Canada +1" }, "Canada +1")).toBe(true);
     expect(showsPlanned({ kind: "combobox", value: "+1", optionLabel: "Canada +1" }, "Anguilla +1")).toBe(false);
     expect(showsPlanned({ kind: "combobox", value: "+1", optionLabel: null }, "Canada +1")).toBe(false);
+  });
+});
+
+describe("one item of a list of several", () => {
+  it("is the option with the same words, or the same words and a suffix, never a longer word", () => {
+    expect(sameItem(["React Native", "React.js", "React (JavaScript Library)"], "React")).toBe("React.js");
+    expect(sameItem(["C#", "C++", "C (Programming Language)"], "C")).toBe("C (Programming Language)");
+    expect(sameItem(["JavaScript", "Java"], "Java")).toBe("Java");
+    expect(sameItem(["TypeScript"], "Python")).toBeNull();
+    expect(sameItem(["Python IDLE", "Python Scripting"], "Python")).toBeNull();
+    expect(sameItem(["SQL Script", "SQL"], "SQL")).toBe("SQL");
   });
 });

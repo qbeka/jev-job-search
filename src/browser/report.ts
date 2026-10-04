@@ -154,12 +154,12 @@ export function showsPlanned(f: { kind: string; value: string | null; optionLabe
  * The fields that show a value other than the one they were given: by the plan, or by a later
  * answer from the memory or the writer, which replaces the plan's. An empty box is not this.
  */
-export function showsAnother(planned: FillPlan["fields"], answers: { selector: string; kind: string; value: string }[], shown: string[], states: ControlState[]): Failure[] {
+export function showsAnother(planned: FillPlan["fields"], answers: { selector: string; kind: string; value: string; picked?: string | undefined }[], shown: string[], states: ControlState[]): Failure[] {
   return planned.flatMap((f, i) => {
     const now = shown[i] ?? "";
     if (!now || states[i] === "off") return [];
     const answer = answers.find((x) => x.selector === f.selector);
-    const want = answer ? { kind: f.kind, value: answer.value } : f.action === "fill" && f.value ? f : null;
+    const want = answer ? { kind: f.kind, value: answer.value, optionLabel: answer.picked ?? null } : f.action === "fill" && f.value ? f : null;
     if (!want || showsPlanned(want, now)) return [];
     return [{ selector: f.selector, why: `the page shows "${now.slice(0, 40)}" instead of "${((answer ? null : f.optionLabel) ?? want.value ?? "").slice(0, 40)}"` }];
   });

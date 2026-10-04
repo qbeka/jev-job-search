@@ -193,11 +193,15 @@ export const FORM = {
   maxOptionsForJev: 40,
   /** How many lists under a list a dropdown is followed into: a choice that is a heading opens the choices under it. */
   maxListLevels: 2,
+  /** How many items of a list of several (skills) are searched for and picked in a box that takes many. */
+  maxListPicks: 8,
+  /** How many extra copies of an attached file are taken off a form that kept them from earlier visits. */
+  maxExtraCopies: 5,
   /** How many screens of a list that only draws the rows in view are gone through, and how many of its choices are named when none fits. */
   maxListScreens: 25,
   maxListed: 120,
   /** How many times a page that grew while its lists were being read is read again before it is planned. */
-  rereads: 2,
+  rereads: 3,
   /** How many of a form's boxes may be switched off when it is read back before the page counts as not on screen: this many, or this share of its boxes, whichever is more. */
   maxSwitchedOff: 3,
   switchedOffShare: 0.34,
@@ -528,6 +532,8 @@ export const RUN = {
   abortGraceMs: 5_000,
   /** How many times a form is opened and filled when values did not land. The second go comes when the other forms are done, with the window to itself. */
   fillAttempts: 2,
+  /** How much of a page's own text `inspect --text` prints. */
+  inspectChars: 12_000,
   /** How many times the writer is asked about one page: once, then again with what did not land and why, as long as a round changes something. */
   resolveRounds: 3,
   /** How many times a page whose Next did not move the form is put right, or pressed again, before the form is left for the person. */

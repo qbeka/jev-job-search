@@ -81,6 +81,18 @@ export function setEnabled(on: boolean, files: Files = {}): void {
 }
 
 /** The accounts a name stands for: an id, an employer's name, a link to its site, or "all". */
+/**
+ * Says whether the tool may press Sign In at an employer when the tool's own Chrome has filled in
+ * the password the person saved there. The employers it was set for.
+ */
+export function useBrowserPassword(which: string, on: boolean, files: Files = {}): Account[] {
+  const ids = new Set(accountsNamed(which, files).map((a) => a.id));
+  return mutateAccounts((f) => {
+    for (const a of f.accounts) if (ids.has(a.id)) a.browserPassword = on;
+    return f.accounts.filter((a) => ids.has(a.id));
+  }, files.accounts);
+}
+
 export function accountsNamed(which: string, files: Files = {}): Account[] {
   const all = loadAccounts(files.accounts).accounts;
   if (which === "all") return all;
@@ -152,7 +164,7 @@ export function describeAccounts(store: SecretStore, files: Files = {}, now = ne
   for (const a of f.accounts) {
     const st = stateOf(s, a.id);
     const how = a.mode === "off" ? "left alone, as you said" : a.createdAt ? `made by the tool on ${a.createdAt.slice(0, 10)}` : a.mode === "existing_only" ? "your own account" : "to be made on first use";
-    const secret = a.mode === "off" ? "" : store.get(itemFor(a.id)) ? "its own password is stored" : shared ? "uses the password for accounts you had" : "no password stored: uses a session you start";
+    const secret = a.mode === "off" ? "" : store.get(itemFor(a.id)) ? "its own password is stored" : shared ? "uses the password for accounts you had" : a.browserPassword ? "signs in with the password you saved in the tool's Chrome" : "no password stored: uses a session you start";
     lines.push(`${a.id}  ${a.email}  ${how}${secret ? `; ${secret}` : ""}; ${st.lastLoginAt ? `last signed in ${st.lastLoginAt.slice(0, 10)}` : "never signed in"}${st.pausedUntil ? `  PAUSED: ${st.pausedWhy ?? ""} (sign in yourself, or /accounts password ${a.tenant} and /accounts clear)` : ""}`);
   }
   return lines;

@@ -1,6 +1,6 @@
 # Accounts
 
-> **In progress.** Two parts of the tool are still being built and are off by default: applying on boards that want an account (Workday, with `/accounts`), and the Google connection (Gmail, for verification emails and for `/inbox`). On the one real Workday form it has been tried on, the sign-in and the first page work and the later pages do not yet. The Gmail connection has not been run against a real mailbox. Until this note is gone, use the tool on the boards that need no account: Greenhouse, Lever, Ashby and the others listed in [SOURCES.md](SOURCES.md).
+> **In progress.** Two parts of the tool are still being built and are off by default: applying on boards that want an account (Workday, with `/accounts`), and the Google connection (Gmail, for verification emails and for `/inbox`). One real Workday application (a six-step form at one employer) has been taken from the sign-in to a confirmed submission; other employers lay their forms out differently and are untested. The Gmail connection has not been run against a real mailbox. Until this note is gone, use the tool on the boards that need no account: Greenhouse, Lever, Ashby and the others listed in [SOURCES.md](SOURCES.md).
 
 *How the tool applies on a job board that wants an account, what you
 decide, and what stays yours to do.*
@@ -49,6 +49,18 @@ except the session in the tool's Chrome. If signing in each time is too
 much, way 2 is for that.
 
 ## 2. Let it sign in when the session ends
+
+There are two ways. The first keeps the password in the tool's own Chrome,
+where you may already have saved it when you signed in:
+
+```
+/accounts browser acme
+```
+
+From then on, when that Chrome has filled the sign-in page in, the tool
+presses Sign In. It types nothing and never reads the password. A sign-in
+the employer refuses is not tried again. `/accounts browser acme --off`
+takes it back. The second way keeps the password in your Keychain:
 
 ```
 /accounts password <employer>

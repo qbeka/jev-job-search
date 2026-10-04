@@ -28,7 +28,13 @@ export async function applyFills(page: Page, wanted: Fill[], profile: Profile, g
   // A box that already shows the value it is meant to hold is left alone: a draft the site kept, or an earlier pass.
   // Writing it again gains nothing, and on some forms it sets off a redraw of everything that depends on it.
   const before = wanted.length ? await shownValues(page, wanted.map((f) => f.selector)).catch(() => [] as string[]) : [];
-  const fills = wanted.filter((f, i) => !rightAlready(f, before[i] ?? ""));
+  // A box of several items that holds one that is none of them (a whole list typed in as one item) is not right, whatever it shows.
+  const stale = new Set<string>();
+  for (const f of wanted) {
+    const items = f.kind === "combobox" ? f.value.split(/\s*,\s*/).filter(Boolean) : [];
+    if (items.length > 2 && (await page.awj<Point>("stalePill", f.selector, items).catch(() => ({ x: 0, y: 0, ok: false }))).ok) stale.add(f.selector);
+  }
+  const fills = wanted.filter((f, i) => stale.has(f.selector) || !rightAlready(f, before[i] ?? ""));
   if (fills.length < wanted.length) trace(`${wanted.length - fills.length} of ${wanted.length} box(es) already show their value and are left alone`);
   const how = new Map<string, Method>();
   const hints = [profile.address.city, profile.address.region, profile.address.regionCode, profile.address.country];
@@ -139,6 +145,21 @@ export async function applyFills(page: Page, wanted: Fill[], profile: Profile, g
 const NO_SUCH_CHOICE = /^no option matches/;
 
 export const TYPED_KINDS = new Set(["text", "email", "tel", "url", "number", "textarea"]);
+
+/** Empties a text box the way a person does: the keyboard in it, everything selected, one key. */
+export function clearBox(page: Page, selector: string): Promise<boolean> {
+  return inFront(page, async () => {
+    const p = await page.awj<Point>("point", selector);
+    if (!p.ok) return false;
+    await page.click(p.x, p.y);
+    if (!(await page.awj<boolean>("hasFocus", selector))) return false;
+    await page.evaluate("window.__awj.selectAll()");
+    await page.key("Backspace");
+    await page.key("Tab");
+    await sleep(BROWSER.pollMs);
+    return !(await page.awj<string>("shown", selector));
+  });
+}
 
 /** True when a dropdown shows the value it was given, or the option that was picked for that value ("Canada +1" for "+1"). */
 export function tookChoice(f: Fill, shown: string): boolean {

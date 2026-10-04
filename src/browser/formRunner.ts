@@ -18,7 +18,8 @@ import { contextFingerprint, resolveOpenFields, type OpenField, type Resolution 
 import type { QueueEntry } from "../jobs/queue.js";
 import { closeTab, ensureBrowser, newTab, Page, sleep } from "./cdp.js";
 import { candidateOptions, closestOptions, readDropdownOptions } from "./dropdowns.js";
-import { applyFills, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
+import { applyFills, clearBox, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
+import { isProfileKey } from "../profile/fieldKeys.js";
 import { learn, notesFor, signatureOf, type Method } from "../knowledge/sites.js";
 import { blockedReport, comparePages, fieldsBlamed, notOnScreen, showsAnother, showsPlanned, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
 import { signInFor } from "../accounts/gate.js";
@@ -138,10 +139,17 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
   // A page that was still drawing itself when it was read has more on it now (Workday brings its sections in one by one).
   // It is read again, so the plan is made from the whole page and not from its first half.
   for (let read = 0; read < FORM.rereads; read++) {
-    const now = await dump(page);
-    const { fresh } = comparePages(d, now);
-    if (!fresh.length) break;
-    trace(`${job.company}: the page grew by ${fresh.length} field(s) while it was read, reading it again`);
+    let now = await dump(page);
+    let { fresh } = comparePages(d, now);
+    // The page before this one may still have been on screen when this one was first read: what has gone since is not part of it.
+    let gone = d.fields.filter((f) => !now.fields.some((x) => x.selector === f.selector)).length;
+    if (!fresh.length && !gone) break;
+    // A page caught changing is read once it has come to rest, not in the middle of the change.
+    await settle(page);
+    now = await dump(page);
+    ({ fresh } = comparePages(d, now));
+    gone = d.fields.filter((f) => !now.fields.some((x) => x.selector === f.selector)).length;
+    trace(`${job.company}: the page changed while it was read (${fresh.length} new field(s), ${gone} gone), reading it again`);
     for (const f of now.fields) f.options = f.options.length ? f.options : (d.fields.find((x) => x.selector === f.selector)?.options ?? []);
     d = now;
     await readDropdownOptions(page, d.fields);
@@ -154,6 +162,19 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
   const uploaded = new Set<string>();
   const uploadFailures: Failure[] = [];
   for (const u of plan.uploads) {
+    // A form that kept the file from an earlier visit (a draft at Workday) is not given it again: it would hold it twice.
+    // Copies an earlier visit left behind are taken off, so the form holds the file once.
+    if (await page.awj<boolean>("showsFile", path.basename(u.path)).catch(() => false)) {
+      let removed = 0;
+      for (let p = await page.awj<Point>("extraCopy", path.basename(u.path)); p.ok && removed < FORM.maxExtraCopies; p = await page.awj<Point>("extraCopy", path.basename(u.path))) {
+        await inFront(page, () => page.click(p.x, p.y));
+        await sleep(BROWSER.pollMs * 4);
+        removed++;
+      }
+      uploaded.add(u.selector);
+      trace(`${job.company}: the file is already attached${removed ? `, ${removed} extra cop${removed === 1 ? "y" : "ies"} removed` : ""}`);
+      continue;
+    }
     const why = (await uploadFile(page, u.selector, u.path)) ?? null;
     if (!why) uploaded.add(u.selector);
     else uploadFailures.push({ selector: u.selector, why });
@@ -167,6 +188,17 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
   }
   let failedRaw = await applyFills(page, plan.fills, profile, guide);
   notePicks(plan, plan.fills);
+  // A form that keeps a draft between visits (Workday) may hold, in a box the profile has nothing for, what an earlier
+  // visit left there: a middle name that is not the person's. Such a box is emptied, so the form says only what the profile says.
+  if (job.ats === "workday") {
+    for (const p of plan.fields) {
+      if (p.action !== "skip" || p.value !== null || !(isProfileKey(p.key) || p.key === "leave_blank") || !TYPED_KINDS.has(p.kind)) continue;
+      if (!((await shownValues(page, [p.selector]))[0] ?? "")) continue;
+      const emptied = await clearBox(page, p.selector);
+      trace(`${job.company}: "${p.label.slice(0, 40)}" held a value the profile does not give${emptied ? ", emptied" : ", and could not be emptied"}`);
+      if (!emptied) failedRaw.push({ selector: p.selector, why: "the box holds a value your profile does not give, and it could not be emptied" });
+    }
+  }
   trace(`${job.company}: filled ${Date.now() - at.started}ms`);
   // A page that finishes starting up after the fill can wipe what was typed, and a phone box throws a number away
   // until its own checker has loaded. Such values are put back after a short wait, then once more after a longer one.
@@ -390,6 +422,8 @@ async function readBack(page: Page, d: FieldsDump, plan: FillPlan, failedRaw: Fa
   // The last line of defence: a value the plan wanted that the page does not show is a failure, whatever happened on the way.
   const states = await controlStates(page, plan.fields.map((f) => f.selector));
   const failed = [...failedRaw, ...notOnScreen(plan.fields, states)];
+  // A page with nothing to fill and no button on it was read while it was not there: it proves nothing and is never ready.
+  if (!plan.fields.length && !plan.submitSelectors.length) failed.push({ selector: "form", why: "the page showed nothing to fill and no button when it was read" });
   plan.fields.forEach((f, i) => {
     if (states[i] === "off" || failed.some((x) => x.selector === f.selector)) return;
     const shownNow = fields[i]?.shown ?? "";
@@ -496,10 +530,14 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
         resolution = { ...resolution, verdict: "needs_review", reason: [resolution.reason, ...refused.map((x) => x.why)].filter(Boolean).join(" "), answers: resolution.answers.filter((a) => !dropped.has(a.selector)) };
       }
     }
-    const fills = resolution.answers
+    const fills: Fill[] = resolution.answers
       .map((a) => ({ selector: a.selector, kind: open.get(a.selector)?.kind ?? "text", value: a.value }))
       .filter((f) => !(f.kind === "checkbox" && !/^(true|yes|1|on|checked)$/i.test(f.value)));
     let failedRaw: Failure[] = [...(await applyFills(page, fills, profile, guideFor(d))), ...r.failed.filter((x) => dumped(x.selector)?.kind === "file").map(({ selector, why }) => ({ selector, why }))];
+    // An answer that named a heading, where the box already held a choice under that heading, is written down as the whole
+    // path ("Job Board > Other"): the read-back, the memory and the check before Submit then all read the box the same way.
+    for (const f of fills) if (f.picked && !f.picked.toLowerCase().includes(f.value.toLowerCase())) f.value = `${f.value} > ${f.picked}`;
+    resolution = { ...resolution, answers: resolution.answers.map((x) => ({ ...x, value: fills.find((f) => f.selector === x.selector)?.value ?? x.value })) };
     // An answer Claude gave may have brought up a further question. JEV fills what it can of those; what it cannot is open on the next look.
     if (opts.jev && entry) {
       const fieldsBefore = plan.fields.length;

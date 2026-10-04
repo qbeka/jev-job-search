@@ -21,6 +21,8 @@ export interface AuthPage {
   typeSecret(secret: Secret): Promise<void>;
   /** What a box holds. A password box says how long its value is and never the value. */
   holds(selector: string): Promise<{ value: string | null; length: number; checked: boolean; password: boolean } | null>;
+  /** True when the browser itself has filled this box from what the person saved in it. The value is not read. */
+  autofilled(selector: string): Promise<boolean>;
   navigate(url: string): Promise<void>;
   /** Opens a link with every page load held to the allowed origins. A load that would leave them is refused. */
   follow(url: string, allowedOrigins: string[]): Promise<{ ok: boolean; why?: string }>;
