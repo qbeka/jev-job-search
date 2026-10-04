@@ -20,7 +20,7 @@ const isSafeOrigin = (value: string): boolean => {
 
 export const Mode = z.enum(["existing_only", "create_if_missing"]);
 
-/** Where an account's password is. Keychain is the default; environment variable names are for a machine without one. */
+/** Where an account's password is: an item in the secret store (the Keychain on a Mac), or an environment variable the person names. */
 const SecretRef = z.union([z.object({ keychain: z.string() }), z.object({ passwordEnv: z.string() })]);
 
 export const Account = z.object({

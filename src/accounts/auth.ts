@@ -13,7 +13,7 @@ import type { WaitingFor } from "../jobs/queue.js";
 import { Secret } from "../util/redact.js";
 import { dayOf, loadAccounts, loadState, mutateAccounts, mutateState, stateOf, type Account, type ProviderRule } from "./config.js";
 import type { Adapter, AuthPage, AuthSnapshot, Verifier } from "./provider.js";
-import { EnvStore, type SecretStore } from "./secrets.js";
+import type { SecretStore } from "./secrets.js";
 
 export type AuthContext = {
   adapter: Adapter;
@@ -53,7 +53,12 @@ const originOf = (url: string): string => {
   }
 };
 
-const secretOf = (store: SecretStore, ref: Account["secret"]): Secret | null => ("keychain" in ref ? store.get(ref.keychain) : new EnvStore().get(ref.passwordEnv));
+/** The password an account names: an item in the secret store, or an environment variable the person named themselves. */
+const secretOf = (store: SecretStore, ref: Account["secret"]): Secret | null => {
+  if ("keychain" in ref) return store.get(ref.keychain);
+  const v = process.env[ref.passwordEnv];
+  return v ? new Secret(v) : null;
+};
 
 /**
  * Types one value into one named box and checks it stayed. The tab must be on an allowed origin,

@@ -21,7 +21,8 @@ export type Consent = {
 };
 type Files = { accounts?: string; state?: string };
 
-const secretRef = (): Account["secret"] => (process.platform === "darwin" ? { keychain: ACCOUNTS.passwordItem } : { passwordEnv: "JEV_ACCOUNTS_PASSWORD" });
+/** The one password, by its name in the secret store: the Keychain on a Mac, JEV_ACCOUNTS_PASSWORD in .env elsewhere. */
+const secretRef = (): Account["secret"] => ({ keychain: ACCOUNTS.passwordItem });
 
 /** The standing rule for every employer on a provider. */
 export function setRule(provider: "workday", c: Consent, files: Files = {}): void {
@@ -98,7 +99,7 @@ export function describeAccounts(store: SecretStore, files: Files = {}, now = ne
   const lines: string[] = [];
   const password = store.get(ACCOUNTS.passwordItem);
   const problems = password ? passwordProblems(password) : [];
-  lines.push(`Password for job-board accounts: ${!password ? "not set. Set it: npx jev accounts password" : problems.length ? `stored, but Workday will refuse it (it needs ${problems.join(", ")})` : "stored in the Keychain"}`);
+  lines.push(`Password for job-board accounts: ${!password ? "not set. Set it: npx jev accounts password" : problems.length ? `stored, but Workday will refuse it (it needs ${problems.join(", ")})` : process.platform === "darwin" ? "stored in the Keychain" : "set in .env"}`);
   const rule = f.providers.workday;
   if (rule) {
     const made = s.created[dayOf(now)] ?? 0;

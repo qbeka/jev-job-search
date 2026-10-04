@@ -7,7 +7,7 @@ import { accountGate, adapterFor, capabilityFor } from "../src/accounts/capabili
 import { addEmployer, clearPauses, describeAccounts, removeAccounts, setRule } from "../src/accounts/commands.js";
 import { AccountsFile, dayOf, loadAccounts, loadState, mutateState, stateOf } from "../src/accounts/config.js";
 import type { AuthSnapshot, VerificationFound, VerificationRequest, Verifier } from "../src/accounts/provider.js";
-import { KeychainStore, MemoryStore, passwordProblems } from "../src/accounts/secrets.js";
+import { EnvStore, envNameOf, KeychainStore, MemoryStore, passwordProblems } from "../src/accounts/secrets.js";
 import { workday } from "../src/accounts/workday.js";
 import { ACCOUNTS } from "../src/config.js";
 import { pickJobs } from "../src/run/pipeline.js";
@@ -420,7 +420,7 @@ describe("the accounts file and the secret store", () => {
     allowAll();
     addEmployer(APPLY, { email: EMAIL, create: false, terms: false, verifyEmail: false }, files);
     const text = describeAccounts(store, files, NOW).join("\n");
-    expect(text).toMatch(/stored in the Keychain/);
+    expect(text).toMatch(/stored in the Keychain|set in \.env/);
     expect(text).toMatch(/workday:acme/);
     expect(text).not.toContain(PASSWORD);
     expect(removeAccounts("workday:acme", files)).toBe(1);
@@ -429,6 +429,14 @@ describe("the accounts file and the secret store", () => {
   it("checks a password against the board's rules without showing it", () => {
     expect(passwordProblems(new Secret(PASSWORD))).toEqual([]);
     expect(passwordProblems(new Secret("short"))).toEqual(["at least 8 characters", "a digit", "an upper-case letter", "a special character"]);
+  });
+
+  it("reads the same item from the environment on a machine with no Keychain", () => {
+    expect(envNameOf(ACCOUNTS.passwordItem)).toBe("JEV_ACCOUNTS_PASSWORD");
+    process.env.JEV_TEST_ITEM = "made-up-value";
+    expect(new EnvStore().get("test-item")?.reveal()).toBe("made-up-value");
+    delete process.env.JEV_TEST_ITEM;
+    expect(new EnvStore().get("test-item")).toBeNull();
   });
 
   it("gives the Keychain a value on standard input, never as an argument", () => {
