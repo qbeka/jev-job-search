@@ -69,6 +69,7 @@ export async function applyFills(page: Page, fills: Fill[], profile: Profile, gu
     else how.set(f.selector, method);
     await page.writesSettled(BROWSER.saveMs);
     trace(`dropdown ${f.selector} ${Date.now() - t}ms${why ? ` failed: ${why}` : ""}`);
+    if (why === "control not found" && process.env.AWJ_TRACE) trace(`  ${await page.awj<string>("whyHidden", f.selector).catch(() => "no reason read")}`);
   }
   // A calendar is clicked through: there is nothing to type.
   for (const f of fills.filter((x) => x.kind === "calendar")) {

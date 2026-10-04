@@ -13,7 +13,7 @@ import { fillJob, nextPage, resolveJob, shouldAdvance } from "../browser/formRun
 import { blockedReport, loadReport, saveReport, type FillReport } from "../browser/report.js";
 import { closeJobTab, hasOpenTab, loadSession, mutateSession, pageFor } from "../browser/session.js";
 import { checkJob, submitJob, watchForConfirmation } from "../browser/submit.js";
-import { assist, waitingWords } from "./assist.js";
+import { assist, notify, waitingWords } from "./assist.js";
 import { logNotes } from "../answers/resolve.js";
 import { JevClient } from "../jev/client.js";
 import { applyUrlFor, hostIs, type Job } from "../jobs/normalize.js";
@@ -28,7 +28,7 @@ import { outcomeOf } from "./outcome.js";
 import { documentPolicy, tailorJob } from "../documents/tailor.js";
 import { printFill } from "./print.js";
 
-export type RunOptions = { submit: boolean; dry: boolean; fresh: boolean; quiet: boolean; fillOnly?: boolean };
+export type RunOptions = { submit: boolean; dry: boolean; fresh: boolean; quiet: boolean; fillOnly?: boolean; /** The person named these jobs and is there: a sign-in only they can do is waited for. */ waitAtSignIn?: boolean };
 
 const asJob = (e: QueueEntry) => e.job as unknown as Job;
 /** The profile as this one job sees it: with the answers the person gave for this job's own questions. */
@@ -150,6 +150,37 @@ async function fillOnce(jev: JevClient, profile: Profile, e: QueueEntry, dry = f
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * A job the person named stopped at a sign-in only they can do. Its page is put in front, they are
+ * told, and the run waits for the application to show. Nothing is typed for them. True once they
+ * are signed in; false when the time ran out, and the job then waits for them as before.
+ */
+export async function waitedAtSignIn(e: QueueEntry, r: FillReport, o: { waitMs?: number; seen?: (id: string, url: string) => Promise<boolean> } = {}): Promise<boolean> {
+  if (r.state !== "blocked" || r.auth?.status !== "awaiting_user_action" || r.auth.waitingFor !== "login") return false;
+  const url = applyUrlFor(asJob(e));
+  const seen =
+    o.seen ??
+    (async (id: string, at: string) => {
+      const page = await pageFor(id);
+      try {
+        await page.bringToFront();
+        return await signedInNow(page, at).catch(() => false);
+      } finally {
+        page.close();
+      }
+    });
+  if (!o.seen && !(await hasOpenTab(e.job.id))) return false;
+  const waitMs = o.waitMs ?? RUN.signInWaitMs;
+  if (!o.seen) notify("jev-job-search needs you", `${e.job.company}: sign in, and the form is filled for you`);
+  console.log(`${e.job.company} asks you to sign in. Its page is in front in the tool's Chrome window: sign in there yourself, and the run carries on. Waiting up to ${Math.round(waitMs / 60_000)} minutes.`);
+  const deadline = Date.now() + waitMs;
+  do {
+    if (await seen(e.job.id, url).catch(() => false)) return true;
+    await sleep(Math.min(ACCOUNTS.stepMs, Math.max(0, deadline - Date.now())));
+  } while (Date.now() < deadline);
+  return false;
 }
 
 /** A form whose values did not land on its first page is worth one more go: a page that loaded badly is often fine the second time. */
@@ -458,7 +489,9 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
   };
   await paced(entries, (e) => hostOf(applyUrlFor(asJob(e))), async (e) => {
     prefetch(entries.indexOf(e));
-    const first = await fillOnce(jev, profile, e, o.dry);
+    let first = await fillOnce(jev, profile, e, o.dry);
+    // Signed in by the person, the form is opened again and filled.
+    if (o.waitAtSignIn && (await waitedAtSignIn(e, first))) first = await fillOnce(jev, profile, e, o.dry);
     reports[entries.indexOf(e)] = first;
     const rest = (async () => {
       const r = o.fillOnly ? first : await writer(() => walk(jev, profile, e, first, o));

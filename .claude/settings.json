@@ -1,4 +1,5 @@
 {
   "model": "claude-sonnet-5-5",
-  "effortLevel": "high"
+  "effortLevel": "high",
+  "permissions": {"allow": ["Bash(gh pr merge *)"]}
 }

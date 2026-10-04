@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { isFormWrite } from "../src/browser/cdp.js";
 import { closestOptions, pickOption } from "../src/browser/dropdowns.js";
-import { comparePages, isClean, isReady, pickNext, pickSubmit, splitFailures } from "../src/browser/report.js";
+import { comparePages, isClean, isReady, pickNext, pickSubmit, notOnScreen, showsAnother, splitFailures } from "../src/browser/report.js";
 import type { FieldsDump } from "../src/forms/fields.js";
 
 const hints = ["Edmonton", "Alberta", "AB", "Canada"];
@@ -158,5 +158,52 @@ describe("a page read again after it was filled", () => {
   it("sees nothing when nothing changed", () => {
     const same = page([f("#a", "A"), f("#b", "B")]);
     expect(comparePages(same, same)).toEqual({ moved: new Map(), fresh: [] });
+  });
+});
+
+describe("a box that shows another value than the one it was given", () => {
+  const planned = [
+    { selector: "#country", kind: "combobox", label: "Country", action: "fill", value: "Canada", optionLabel: null },
+    { selector: "#city", kind: "text", label: "City", action: "fill", value: "Edmonton", optionLabel: null },
+    { selector: "#why", kind: "textarea", label: "Why us?", action: "draft", value: null, optionLabel: null },
+    { selector: "#prefix", kind: "combobox", label: "Prefix", action: "skip", value: null, optionLabel: null },
+  ] as unknown as Parameters<typeof showsAnother>[0];
+  const on = ["on", "on", "on", "on"] as Parameters<typeof showsAnother>[3];
+
+  it("holds the form when a list ended on the row beside the wanted one", () => {
+    const found = showsAnother(planned, [], ["Central African Republic", "Edmonton", "", ""], on);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.selector).toBe("#country");
+    expect(found[0]?.why).toMatch(/shows "Central African Republic" instead of "Canada"/);
+  });
+
+  it("goes by a later answer when there is one, and leaves alone what was never given a value", () => {
+    const answers = [{ selector: "#why", kind: "textarea", value: "I like the work." }];
+    expect(showsAnother(planned, answers, ["Canada", "Edmonton", "I like the work.", "Mr."], on)).toEqual([]);
+    expect(showsAnother(planned, answers, ["Canada", "Edmonton", "Something else", "Mr."], on).map((x) => x.selector)).toEqual(["#why"]);
+  });
+
+  it("says nothing about an empty box or one the form switched off: those are other checks", () => {
+    expect(showsAnother(planned, [], ["", "Edmonton", "", ""], on)).toEqual([]);
+    expect(showsAnother(planned, [], ["Central African Republic", "Edmonton", "", ""], ["off", "on", "on", "on"] as never)).toEqual([]);
+  });
+});
+
+describe("a form that was not on screen when it was read back", () => {
+  const planned = Array.from({ length: 10 }, (_, i) => ({ selector: `#f${i}`, kind: "text", label: `F${i}`, action: "fill", value: "v" })) as unknown as Parameters<typeof notOnScreen>[0];
+  const states = (off: number) => planned.map((_, i) => (i < off ? "off" : "on")) as Parameters<typeof notOnScreen>[1];
+
+  it("holds the form, and the hold is one no plan field can explain away", () => {
+    const found = notOnScreen(planned, states(10));
+    expect(found).toHaveLength(1);
+    expect(found[0]?.why).toMatch(/10 of the form's 10 boxes were not on screen/);
+    expect(splitFailures({ fields: planned } as never, found, planned.map(() => "v")).holds).toHaveLength(1);
+    expect(notOnScreen(planned, planned.map(() => "missing") as never)).toHaveLength(1);
+  });
+
+  it("lets through the few boxes another answer switched off", () => {
+    expect(notOnScreen(planned, states(0))).toEqual([]);
+    expect(notOnScreen(planned, states(3))).toEqual([]);
+    expect(notOnScreen(planned, states(4))).toHaveLength(1);
   });
 });

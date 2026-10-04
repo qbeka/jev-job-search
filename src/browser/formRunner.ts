@@ -20,7 +20,7 @@ import { closeTab, ensureBrowser, newTab, Page, sleep } from "./cdp.js";
 import { candidateOptions, closestOptions, readDropdownOptions } from "./dropdowns.js";
 import { applyFills, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
 import { learn, notesFor, signatureOf, type Method } from "../knowledge/sites.js";
-import { blockedReport, comparePages, showsPlanned, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
+import { blockedReport, comparePages, notOnScreen, showsAnother, showsPlanned, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
 import { signInFor } from "../accounts/gate.js";
 import { controlStates, dump, goto, inFront, inTurn, install, loadSession, mutateSession, pageFor, settle, shownValues, trace, type Point } from "./session.js";
 
@@ -135,6 +135,11 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
     trace(`${job.company}: upload ${why ?? "ok"}`);
   }
   const guide = guideFor(d);
+  // A form that draws itself again after its lists were read is not written to halfway: the boxes have to be back first.
+  for (const deadline = Date.now() + BROWSER.optionsMs * 2; Date.now() < deadline; await sleep(BROWSER.pollMs)) {
+    const states = await controlStates(page, plan.fields.map((f) => f.selector));
+    if (!notOnScreen(plan.fields, states).length) break;
+  }
   let failedRaw = await applyFills(page, plan.fills, profile, guide);
   trace(`${job.company}: filled ${Date.now() - at.started}ms`);
   // A page that finishes starting up after the fill can wipe what was typed, and a phone box throws a number away
@@ -342,7 +347,7 @@ async function readBack(page: Page, d: FieldsDump, plan: FillPlan, failedRaw: Fa
   const labelOf = (selector: string) => plan.fields.find((f) => f.selector === selector)?.label ?? selector;
   // The last line of defence: a value the plan wanted that the page does not show is a failure, whatever happened on the way.
   const states = await controlStates(page, plan.fields.map((f) => f.selector));
-  const failed = [...failedRaw];
+  const failed = [...failedRaw, ...notOnScreen(plan.fields, states)];
   plan.fields.forEach((f, i) => {
     if (states[i] === "off" || failed.some((x) => x.selector === f.selector)) return;
     const shownNow = fields[i]?.shown ?? "";
@@ -475,6 +480,9 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
         ...failedRaw,
         // Anything the plan or Claude wanted in the form that the page does not show.
         ...plan.fields.filter((f, i) => (f.action === "fill" || f.action === "upload" || fills.some((x) => x.selector === f.selector)) && !fields[i]?.shown && states[i] !== "off" && !failedRaw.some((x) => x.selector === f.selector)).map((f) => ({ selector: f.selector, why: "the value is not confirmed on the page" })),
+        // And anything that shows some other value than the one it was given, whatever happened on the way.
+        ...showsAnother(plan.fields, fills, fields.map((f) => f.shown), states).filter((x) => !failedRaw.some((y) => y.selector === x.selector)),
+        ...notOnScreen(plan.fields, states),
       ],
       fields.map((f) => f.shown),
     );

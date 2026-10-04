@@ -37,9 +37,14 @@ employer's forms like any other.
 postings. Jobs at employers you have signed in to are found by the next
 `/discover`.
 
-When the session ends, days or weeks later, the job waits for you and you
-sign in again the same way. Nothing is stored except the session in the
-tool's Chrome.
+A session does not last. At the one employer this was tried on, it had
+ended within the hour. When it has ended and you apply to a job you named
+(`/apply <job>`), the sign-in page comes to the front, you get a
+notification, and the run waits up to five minutes for you to sign in
+again; then it fills the form. In a batch or a daily run the job waits
+for you instead (`/resume` once you have signed in). Nothing is stored
+except the session in the tool's Chrome. If signing in each time is too
+much, way 2 is for that.
 
 ## 2. Let it sign in when the session ends
 

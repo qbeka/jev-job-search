@@ -6,6 +6,7 @@
 import { ACCOUNTS, RUN } from "../config.js";
 import type { Page } from "../browser/cdp.js";
 import { sleep } from "../browser/cdp.js";
+import { trace } from "../browser/session.js";
 import { gmailClient } from "../mail/gmail.js";
 import { mailVerifier } from "../mail/verification.js";
 import { accountId, ensureSignedIn, type AuthResult } from "./auth.js";
@@ -24,7 +25,8 @@ export async function signInFor(page: Page, applicationUrl: string, opts: { rehe
   const store = defaultStore();
   const client = gmailClient(store);
   const auth = cdpAuthPage(page);
-  const result = await ensureSignedIn(auth, { adapter: found.adapter, tenant: found.tenant, applicationUrl, secrets: store, verifier: client ? mailVerifier(client) : null, rehearsal: !!opts.rehearsal });
+  const result = await ensureSignedIn(auth, { adapter: found.adapter, tenant: found.tenant, applicationUrl, secrets: store, verifier: client ? mailVerifier(client) : null, rehearsal: !!opts.rehearsal, note: trace });
+  trace(`sign-in: ${result.steps.join("; ")}`);
   if (!result.ok) return result;
   // A draft the board saved opens in the middle. The form is taken back to its first page, so every page is read and checked.
   for (let i = 0; i < RUN.maxPages && (await auth.click(found.adapter.controls.back)); i++) await sleep(ACCOUNTS.stepMs);

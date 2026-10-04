@@ -230,6 +230,7 @@
   const widgetOf = (el, isCalendar, drawnByLabel) => {
     if (isCalendar) return "calendar";
     if (el.tagName === "BUTTON" && el.hasAttribute("aria-haspopup")) return "menu-button";
+    if (el.closest('[data-automation-id="multiSelectContainer"]')) return "workday-prompt";
     if (el.closest(".iti")) return "intl-tel";
     if (el.closest('[class*="select__control"]')) return "react-select";
     if (el.closest(".selectize-input, .selectize-control")) return "selectize";
@@ -241,6 +242,16 @@
   };
   // A button that opens a list of choices (aria-haspopup, BambooHR's pickers) is a dropdown drawn without an input.
   const MENU_BUTTON = 'button[aria-haspopup="true"], button[aria-haspopup="listbox"], button[aria-haspopup="menu"]';
+  // Menus in a page's own header (its language, the account) are the site's, not questions of the form.
+  const CHROME = 'header, [role=banner], nav, [role=navigation], [data-automation-id="utilityButtonBar"]';
+  // Workday keeps an application in one box of its page. What is outside it is the site's own.
+  const FLOW = document.querySelector('[data-automation-id="applyFlowPage"]');
+  // Workday's search-and-pick box: a search input, the list of what is picked, and a list that opens under it.
+  const PROMPT = '[data-automation-id="multiSelectContainer"]';
+  const pickedIn = (prompt) => {
+    const rows = [...prompt.querySelectorAll('[data-automation-id="selectedItemList"] [role=option], [data-automation-id="selectedItem"]')];
+    return rows.filter((r) => !rows.some((o) => o !== r && o.contains(r))).map(text).filter(Boolean).join(", ");
+  };
   const controls = document.querySelectorAll(`input, select, textarea, [role=combobox], [role=listbox], ${MENU_BUTTON}`);
   const containerOf = (el) => el.closest("fieldset, [class*=field i], [class*=question i], [data-field-path], [id^=question], .form-group") || el.parentElement;
   const usedContainers = new Set();
@@ -254,6 +265,10 @@
     // A box for a one-time code is never read: a code a site sends is typed by the person, or by the sign-in for an account they set up.
     if (/one-time-code/i.test(el.getAttribute("autocomplete") || "")) return;
     const isControl = ["input", "select", "textarea"].includes(tag);
+    if ((el.closest(CHROME) && !el.closest("form")) || (FLOW && !FLOW.contains(el) && type !== "file")) return;
+    const prompt = el.closest(PROMPT);
+    // The list of what is picked is part of the box, not a question of its own.
+    if (prompt && !isControl) return;
     // The list a combobox opens is that combobox's, not a question of its own.
     if (!isControl && el.id && document.querySelector(`[aria-controls="${attr(el.id)}"], [aria-owns="${attr(el.id)}"]`)) return;
     // Custom widgets (react-select wrappers, live regions) are reported once, through the real input in the same question.
@@ -281,7 +296,7 @@
     if (isCalendar) kind = "calendar";
     else if (tag === "select") kind = "select";
     else if (tag === "textarea") kind = "textarea";
-    else if (role === "combobox" || el.getAttribute("aria-autocomplete") === "list" || role === "listbox" || hasSuggestBox(el) || el.matches(MENU_BUTTON)) kind = "combobox";
+    else if (role === "combobox" || el.getAttribute("aria-autocomplete") === "list" || role === "listbox" || hasSuggestBox(el) || el.matches(MENU_BUTTON) || (prompt && tag === "input" && type === "text")) kind = "combobox";
     else if (type === "radio") kind = "radio";
     else if (type === "checkbox") kind = "checkbox";
     else if (type === "file") kind = "file";
@@ -362,7 +377,7 @@
       f.checked = el.checked;
       f.value = el.value;
     } else if (kind === "combobox") {
-      f.value = el.value || f.value || "";
+      f.value = (prompt ? pickedIn(prompt) : el.value) || f.value || "";
       const listId = el.getAttribute("aria-controls") || el.getAttribute("aria-owns");
       const list = listId ? document.getElementById(listId) : null;
       if (list) list.querySelectorAll("[role=option]").forEach((o) => f.options.push({ value: text(o), label: text(o) }));

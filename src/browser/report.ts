@@ -145,6 +145,32 @@ export function showsPlanned(f: { kind: string; value: string | null; optionLabe
   return !!shown;
 }
 
+/**
+ * The fields that show a value other than the one they were given: by the plan, or by a later
+ * answer from the memory or the writer, which replaces the plan's. An empty box is not this.
+ */
+export function showsAnother(planned: FillPlan["fields"], answers: { selector: string; kind: string; value: string }[], shown: string[], states: ControlState[]): Failure[] {
+  return planned.flatMap((f, i) => {
+    const now = shown[i] ?? "";
+    if (!now || states[i] === "off") return [];
+    const answer = answers.find((x) => x.selector === f.selector);
+    const want = answer ? { kind: f.kind, value: answer.value } : f.action === "fill" && f.value ? f : null;
+    if (!want || showsPlanned(want, now)) return [];
+    return [{ selector: f.selector, why: `the page shows "${now.slice(0, 40)}" instead of "${((answer ? null : f.optionLabel) ?? want.value ?? "").slice(0, 40)}"` }];
+  });
+}
+
+/**
+ * A form that was not on screen when it was read back proves nothing: a page drawing itself again,
+ * or lying under a dialog, shows every box as switched off. One or two boxes switched off by
+ * another answer is the form's own doing; many at once holds the form.
+ */
+export function notOnScreen(planned: FillPlan["fields"], states: ControlState[]): Failure[] {
+  const gone = planned.filter((_, i) => states[i] !== "on").length;
+  if (gone <= Math.max(FORM.maxSwitchedOff, Math.floor(planned.length * FORM.switchedOffShare))) return [];
+  return [{ selector: "form", why: `${gone} of the form's ${planned.length} boxes were not on screen when the page was read back, so nothing on it is confirmed` }];
+}
+
 type Open = Pick<FillReport, "state" | "drafts" | "reviews" | "failed" | "missingRequired">;
 
 /** Nothing is left open on this page: every wanted value is on it and no required field is empty. */

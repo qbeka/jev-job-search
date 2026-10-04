@@ -11,7 +11,8 @@ import type { AuthSnapshot, VerificationFound, VerificationRequest, Verifier } f
 import { EnvStore, envNameOf, generatePassword, itemFor, KeychainStore, MemoryStore, passwordProblems } from "../src/accounts/secrets.js";
 import { workday } from "../src/accounts/workday.js";
 import { ACCOUNTS } from "../src/config.js";
-import { pickJobs } from "../src/run/pipeline.js";
+import { blockedReport } from "../src/browser/report.js";
+import { pickJobs, waitedAtSignIn } from "../src/run/pipeline.js";
 import { Secret } from "../src/util/redact.js";
 import { APPLY, FakeWorkday, ORIGIN, type Server } from "./helpers/fakeWorkday.js";
 
@@ -558,6 +559,31 @@ describe("what the tool may apply to", () => {
     const named = pickJobs(entries, ["b"], { count: 1, dry: false }, (url) => (url === other ? "today's limit of 1 new accounts is reached" : null));
     expect(named.picked).toEqual([]);
     expect(named.refused[0]?.why).toMatch(/limit/);
+  });
+});
+
+describe("a job the person named, stopped at a sign-in", () => {
+  const job = { id: "a", url: APPLY, company: "Acme", title: "Intern", ats: "workday", locations: [], postedAt: null };
+  const entry = { job, status: "queued", attempts: 0 } as never;
+  const atSignIn = { ...blockedReport(job, "no password is stored"), auth: { status: "awaiting_user_action" as const, waitingFor: "login" as const } };
+
+  it("waits for the person to sign in, then says the run can carry on", async () => {
+    let reads = 0;
+    const went = await waitedAtSignIn(entry, atSignIn, { waitMs: 60_000, seen: async () => ++reads >= 2 });
+    expect(went).toBe(true);
+    expect(reads).toBe(2);
+  });
+
+  it("gives up when the time runs out, and the job waits for them as before", async () => {
+    expect(await waitedAtSignIn(entry, atSignIn, { waitMs: 0, seen: async () => false })).toBe(false);
+  });
+
+  it("does not wait at anything but a sign-in the person can do: a robot check, a verification email, a form that is simply blocked", async () => {
+    const never = { waitMs: 60_000, seen: async () => true };
+    expect(await waitedAtSignIn(entry, { ...atSignIn, auth: { status: "awaiting_user_action", waitingFor: "robot_check" } }, never)).toBe(false);
+    expect(await waitedAtSignIn(entry, { ...atSignIn, auth: { status: "awaiting_email_verification", waitingFor: "email_link" } }, never)).toBe(false);
+    expect(await waitedAtSignIn(entry, { ...atSignIn, auth: { status: "login_required", waitingFor: "login" } }, never)).toBe(false);
+    expect(await waitedAtSignIn(entry, blockedReport(job, "no form found"), never)).toBe(false);
   });
 });
 

@@ -191,6 +191,13 @@ export const FORM = {
   shortAnswerChars: 3,
   /** Selects with more options than this are pre-filtered in code before JEV sees them. */
   maxOptionsForJev: 40,
+  /** How many lists under a list a dropdown is followed into: a choice that is a heading opens the choices under it. */
+  maxListLevels: 2,
+  /** How many of a form's boxes may be switched off when it is read back before the page counts as not on screen: this many, or this share of its boxes, whichever is more. */
+  maxSwitchedOff: 3,
+  switchedOffShare: 0.34,
+  /** How many times an option's place is read while waiting for two reads in a row to agree, before the click is given up. */
+  steadyReads: 6,
   /** How many times a page is read again after a fill, for questions that only appear once another is answered. */
   followUpRounds: 3,
   /** The most optional fields that may be left blank because they could not be set. More than this means the fill itself went wrong, and the form is held. */
@@ -508,6 +515,8 @@ export const RUN = {
   maxPages: 8,
   /** How long `resume` watches one waiting form for the person to finish it. */
   resumeWaitMs: 5 * 60_000,
+  /** How long `apply` on a job the person named waits at a sign-in for them to sign in, before it leaves the page open and moves on. */
+  signInWaitMs: 5 * 60_000,
   /** A form kept open for the person is given up after this long: its session has usually expired by then. */
   waitingExpiryHours: 12,
   /** How long an abandoned fill is given to stop before its form is tried again. */

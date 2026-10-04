@@ -6,7 +6,7 @@
 import { BROWSER, FORM } from "../config.js";
 import type { DumpedField } from "../forms/fields.js";
 import { sleep, type Page } from "./cdp.js";
-import { inFront, norm, shownValues, type Point } from "./session.js";
+import { inFront, norm, shownValues, trace, type Point } from "./session.js";
 import { showsValue } from "../util/dates.js";
 
 /** Polls an open dropdown until its options settle, or until `enough` says the wanted one has arrived. */
@@ -61,6 +61,26 @@ async function openDropdown(page: Page, selector: string): Promise<boolean> {
   if (!p.ok) return false;
   await page.click(p.x, p.y);
   return true;
+}
+
+/**
+ * Where an option is, once it has stopped moving: a long list scrolls to the option, and a list drawn
+ * beside its box follows the box a moment later. A click on a point read too early lands on another row.
+ */
+async function steadyPoint(page: Page, selector: string, label: string): Promise<Point> {
+  let last = await page.awj<Point>("optionPoint", selector, label);
+  for (let read = 0; read < FORM.steadyReads; read++) {
+    await sleep(BROWSER.pollMs);
+    const now = await page.awj<Point>("optionPoint", selector, label);
+    if (now.ok && last.ok && Math.abs(now.x - last.x) < 1 && Math.abs(now.y - last.y) < 1) return now;
+    last = now;
+  }
+  return { ...last, ok: false };
+}
+
+/** With the trace on, the shape of a control whose list did not give the wanted value, taken while the list is still open. */
+async function sketch(page: Page, selector: string): Promise<void> {
+  if (process.env.AWJ_TRACE) trace(`  ${selector}: ${await page.awj<string>("sketch", selector).catch(() => "no sketch")}`);
 }
 
 async function closeDropdown(page: Page): Promise<void> {
@@ -185,6 +205,7 @@ async function clickAndPick(page: Page, selector: string, value: string, hints: 
       // Keys go wherever the focus is. A click that did not put it in this box (the window was still coming to the front) is made good here.
       if (!(await page.awj<boolean>("hasFocus", selector)) && !(await page.awj<boolean>("focus", selector))) break;
       await page.type(typed);
+      if (await page.awj<boolean>("searchesOnEnter", selector)) await page.key("Enter");
       // The first word only widens the search. The pick still has to match the whole value.
       opts = await waitOptions(page, selector, true, (seen) => pickOption(seen, value, hints) !== null);
       choice = pickOption(opts, value, hints);
@@ -193,23 +214,40 @@ async function clickAndPick(page: Page, selector: string, value: string, hints: 
     }
   }
   if (!choice) {
+    await sketch(page, selector);
     await closeDropdown(page);
     return `no option matches "${value}"${opts.length ? ` among: ${opts.slice(0, 12).join(" | ")}` : ""}`;
   }
   // Finding the option scrolls it into view, and a list drawn beside its box moves with the box a moment later.
   // The point is read again once the page has settled, so the click lands on this row and not the one below.
-  let p = await page.awj<Point>("optionPoint", selector, choice);
-  if (p.ok) {
-    await sleep(BROWSER.pollMs);
-    p = await page.awj<Point>("optionPoint", selector, choice);
-  }
+  const p = await steadyPoint(page, selector, choice);
   if (!p.ok) {
     await closeDropdown(page);
     return `option "${choice}" could not be clicked`;
   }
   await page.click(p.x, p.y);
   await sleep(BROWSER.pollMs);
-  const shown = (await shownValues(page, [selector]))[0] ?? "";
+  let shown = (await shownValues(page, [selector]))[0] ?? "";
+  // A choice that is a heading opens the list under it (Workday's "How did you hear about us?"). The pick is made
+  // there when the wanted value, or the one thing on offer, is in it. Anything else is left for the person, with what was offered.
+  for (let level = 0; !shown && level < FORM.maxListLevels; level++) {
+    const under = await waitOptions(page, selector, false);
+    if (!under.length || under.join("|") === opts.join("|")) break;
+    const next = pickOption(under, value, hints) ?? (under.length === 1 ? (under[0] ?? null) : null);
+    if (!next) {
+      await sketch(page, selector);
+      await closeDropdown(page);
+      return `"${choice}" opens another list, and "${value}" is not in it: ${under.slice(0, 12).join(" | ")}`;
+    }
+    const at = await steadyPoint(page, selector, next);
+    if (!at.ok) break;
+    await page.click(at.x, at.y);
+    await sleep(BROWSER.pollMs);
+    opts = under;
+    choice = next;
+    shown = (await shownValues(page, [selector]))[0] ?? "";
+  }
+  if (await page.awj<boolean>("searchesOnEnter", selector)) await closeDropdown(page);
   if (shown && !showsValue(choice, shown)) return `the list shows "${shown.slice(0, 40)}" after "${choice}" was clicked`;
   return null;
 }

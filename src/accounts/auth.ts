@@ -27,6 +27,8 @@ export type AuthContext = {
   now?: () => Date;
   /** True in a rehearsal: an account the person has is signed in to, and nothing is made or asked for. */
   rehearsal?: boolean;
+  /** Where a line about a page the sign-in could not place goes: the run's trace. */
+  note?: (line: string) => void;
 };
 
 export type AuthStop = {
@@ -46,6 +48,8 @@ class Halt extends Error {
     super(reason);
   }
 }
+
+const ADDRESS = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
 const originOf = (url: string): string => {
   try {
@@ -190,7 +194,8 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
         continue;
       }
       const view = adapter.view(s);
-      steps.push(`page: ${view}`);
+      const shows = Object.entries(s.present).filter(([, there]) => there).map(([name]) => name);
+      steps.push(view === "unknown" ? `page: unknown (shows ${shows.join(", ") || "no control the tool knows"})` : `page: ${view}`);
       // A paused account is touched only to use a session the person started themselves.
       if (view !== "signed_in" && state().pausedUntil) return pausedStop();
 
@@ -370,7 +375,11 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
       }
 
       // A page still drawing itself looks like nothing at first.
-      if (++unknown >= ACCOUNTS.unknownReads) return stop("awaiting_user_action", "unknown", "the page is not a sign-in the tool knows. Look at it in the tool's window");
+      if (++unknown >= ACCOUNTS.unknownReads) {
+        // What the page shows and says, for whoever has to teach the tool this page. Addresses are left out.
+        ctx.note?.(`sign-in: a page the tool does not know, at ${s.url}; shows ${shows.join(", ") || "no control it knows"}; says: ${s.text.replace(ADDRESS, "<address>").slice(0, 500)}${s.errors.length ? `; errors: ${s.errors.join(" | ").replace(ADDRESS, "<address>")}` : ""}`);
+        return stop("awaiting_user_action", "unknown", "the page is not a sign-in the tool knows. Look at it in the tool's window");
+      }
       await page.wait(ACCOUNTS.stepMs);
     }
     return stop("awaiting_user_action", "unknown", "the sign-in took more steps than the tool allows itself. Look at it in the tool's window");

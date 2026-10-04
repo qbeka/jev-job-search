@@ -11,7 +11,36 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added
+- `apply` on a job you named waits at an employer's sign-in. When your
+  session there has ended and no password is stored, the sign-in page
+  comes to the front, you are notified, and the run waits up to five
+  minutes for you to sign in yourself. Then it fills the form. Before,
+  the job stopped and you had to sign in and start again. A batch and the
+  daily run still move on.
+- Workday's search-and-pick boxes ("How did you hear about us?", the
+  phone's country code) are read as one dropdown each: what is picked is
+  the box's value, the list that opens is its options, and a choice that
+  opens a list under it is followed there.
+
 ### Fixed
+- A form whose boxes were not on screen when the page was read back is
+  never called ready. On a real Workday form the page lay hidden for a
+  moment after its lists were read; every box then looked switched off,
+  nothing was held, and the rehearsal said READY with two required boxes
+  empty. Now the fill waits for the boxes to be back, and a page read
+  back with many boxes off holds the form.
+- A box that shows another value than the one it was given holds the
+  form after the second pass too, not only after the first. A click on a
+  long list that was still moving landed three rows low and the report
+  did not say so.
+- An option is clicked only once it has stopped moving and is what lies
+  under the pointer.
+- Menus in a page's header (its language, the account) are no longer
+  taken for questions of the form. Picking a language there reloaded the
+  page in the middle of a fill.
+- The sign-in says which controls an unknown page shows, in its steps
+  and in the trace.
 - A page that loads a second time while its form is being filled no
   longer stops the fill with "Cannot read properties of undefined". The
   runner puts its in-page helpers back and carries on; every value is

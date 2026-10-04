@@ -33,9 +33,16 @@
     const listId = el.getAttribute("aria-controls") || el.getAttribute("aria-owns") || el.getAttribute("data-menu-id");
     return listId ? document.getElementById(listId) : null;
   };
+  // Workday's search-and-pick box: a search input, the list of what is picked, and a list drawn elsewhere on the page.
+  const PROMPT = '[data-automation-id="multiSelectContainer"]';
+  const outermost = (rows) => rows.filter((r) => !rows.some((o) => o !== r && o.contains(r)));
+  const pickedIn = (prompt) => outermost([...prompt.querySelectorAll('[data-automation-id="selectedItemList"] [role=option], [data-automation-id="selectedItem"]')]).map(text).filter(Boolean).join(", ");
   const optionEls = (sel) => {
     const el = q(sel);
     if (!el) return [];
+    const prompt = el.closest(PROMPT);
+    // Its open list is drawn apart from the box. What is already picked, in this box or another, is not on offer.
+    if (prompt) return [...document.querySelectorAll('[data-automation-id="activeListContainer"] [role=option]')].filter((o) => visible(o) && !o.closest(PROMPT));
     let root = listRootOf(el);
     if (!root) {
       const wrap = el.closest('[class*="container"], [class*="select"], [class*="field"], [class*="question"]');
@@ -52,7 +59,7 @@
       if (list) return [...list.querySelectorAll("option, [role=option]")].filter(visible);
     }
     if (!root && el.getAttribute("aria-expanded") !== "true") return [];
-    const all = root ? [...root.querySelectorAll(root.tagName === "DATALIST" ? "option, [role=option]" : "[role=option], [role=menuitem]")] : [...document.querySelectorAll("[role=option]")].filter((o) => !o.closest(".iti"));
+    const all = root ? [...root.querySelectorAll(root.tagName === "DATALIST" ? "option, [role=option]" : "[role=option], [role=menuitem]")] : [...document.querySelectorAll("[role=option]")].filter((o) => !o.closest(".iti") && !o.closest(PROMPT));
     return all.filter(visible);
   };
   // Dropdown components keep their option list and their select handler on their own props.
@@ -178,9 +185,52 @@
     options(sel) {
       return optionEls(sel).map(text);
     },
+    /** Why a control that is in the page cannot be seen, and any dialog lying over the page, for the trace. No value is read. */
+    whyHidden(sel) {
+      const el = q(sel);
+      const line = (n) => [n.tagName.toLowerCase(), n.getAttribute("role") || "", n.getAttribute("data-automation-id") || "", n.id ? `#${n.id}` : ""].filter(Boolean).join(" ");
+      const dialogs = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [aria-modal="true"], [data-automation-id*="popup" i]')].filter(visible).slice(0, 2).map((n) => `${line(n)}: "${text(n).slice(0, 160)}"`);
+      let why = "not in the page";
+      if (el) {
+        why = "seen";
+        for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+          const st = getComputedStyle(n);
+          const r = n.getBoundingClientRect();
+          if (st.display === "none" || st.visibility === "hidden" || r.width === 0 || r.height === 0) why = `hidden at ${line(n)} (display ${st.display}, visibility ${st.visibility}, ${Math.round(r.width)}x${Math.round(r.height)})`;
+        }
+      }
+      return `${why}${dialogs.length ? `; over the page: ${dialogs.join(" | ")}` : ""}; url ${location.pathname.slice(-60)}`;
+    },
+    /** True for a box that only searches once Enter is pressed (Workday's search-and-pick box). */
+    searchesOnEnter(sel) {
+      const el = q(sel);
+      return !!el && !!el.closest(PROMPT);
+    },
+    /**
+     * The shape of a control and of any list open on the page, for the trace of a value that did
+     * not land: tags, roles and the site's own names for its parts. No value of any box is read.
+     */
+    sketch(sel) {
+      const el = q(sel);
+      if (!el) return "not on the page";
+      const line = (n) => {
+        const bits = [n.tagName.toLowerCase()];
+        for (const a of ["role", "data-automation-id", "data-uxi-widget-type", "aria-haspopup", "aria-expanded", "aria-controls", "aria-checked", "aria-selected"]) if (n.hasAttribute(a)) bits.push(`${a}=${n.getAttribute(a)}`);
+        return bits.join(" ");
+      };
+      const named = (root, most) => [root, ...root.querySelectorAll("[role], [data-automation-id]")].filter(visible).slice(0, most).map((n) => `${line(n)}${n.matches("[role=option], [data-automation-id^=prompt], [data-automation-id=menuItem]") ? ` "${text(n).slice(0, 40)}"` : ""}`);
+      let box = el;
+      for (let i = 0; i < 3 && box.parentElement && !box.matches("[data-automation-id^=formField]"); i++) box = box.parentElement;
+      const lists = [...document.querySelectorAll('[role=listbox], [data-automation-id="activeListContainer"], [data-automation-widget="wd-popup"], [data-automation-id*="popup" i]')].filter((n) => visible(n) && !box.contains(n));
+      return [`control: ${named(box, 20).join(" > ")}`, ...outermost(lists).slice(0, 2).map((l) => `open list: ${named(l, 30).join(" > ")}`)].join(" || ");
+    },
     optionPoint(sel, label) {
       const o = optionEls(sel).find((x) => text(x) === label);
-      return o ? center(o) : { x: 0, y: 0, ok: false };
+      if (!o) return { x: 0, y: 0, ok: false };
+      const p = center(o);
+      // A list still moving under the pointer would take the click on the row beside this one. The point counts only when this row is what lies under it.
+      const under = p.ok ? document.elementFromPoint(p.x, p.y) : null;
+      return { ...p, ok: !!under && (o.contains(under) || under.contains(o)) };
     },
     /**
      * The calendar that belongs to a date box, as the runner needs it to click through: whether it
@@ -250,6 +300,8 @@
         return el.files && el.files.length ? el.files[0].name : /\.pdf/i.test(text(wrap)) ? text(wrap).slice(0, 80) : "";
       }
       if (el.tagName === "SELECT") return el.selectedOptions[0] && el.value !== "" ? text(el.selectedOptions[0]) : "";
+      // A search-and-pick box shows what is picked beside a search input that stays empty.
+      if (el.closest(PROMPT)) return pickedIn(el.closest(PROMPT));
       if (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA" && (el.getAttribute("role") === "combobox" || el.hasAttribute("aria-haspopup"))) {
         // A dropdown drawn without an input shows its value as its own text, or a placeholder when empty.
         const t = text(el);
