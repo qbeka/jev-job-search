@@ -45,6 +45,12 @@ changed for a person using the tool and what changed for a contributor.
   address and phone sections and emptied them.
 
 ### Fixed
+- A dropdown that picked the right option for a short value is taken as
+  landed. The phone's country on Greenhouse was given "+1", picked
+  "Canada +1", and was then judged not to show "+1", so every such form
+  went through a second pass and one more JEV call for nothing. The box
+  is now compared with the option that was picked, and so is the check
+  before Submit.
 - "Do you require work authorization?" is read as a question about
   sponsorship. It was read as "are you authorized", so the true answer
   was refused and the form held.

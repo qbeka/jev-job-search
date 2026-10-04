@@ -153,7 +153,7 @@ export async function readDropdownOptions(page: Page, fields: DumpedField[]): Pr
 }
 
 /** Sets a react-select through its own handler: no clicks, no waiting on menus. Null when it cannot. */
-async function fillDropdownDirect(page: Page, selector: string, value: string, hints: string[]): Promise<boolean | null> {
+async function fillDropdownDirect(page: Page, selector: string, value: string, hints: string[], out?: Picked): Promise<boolean | null> {
   const read = () => page.awj<string[] | null>("reactOptions", selector);
   let opts = await read();
   if (opts === null) return null;
@@ -190,7 +190,9 @@ async function fillDropdownDirect(page: Page, selector: string, value: string, h
   }
   if (!choice) await page.awj("reactMenu", selector, false);
   if (!choice) return false;
-  return page.awj<boolean>("reactSelect", selector, choice);
+  const set = await page.awj<boolean>("reactSelect", selector, choice);
+  if (set && out) out.picked = choice;
+  return set;
 }
 
 /**
@@ -198,22 +200,25 @@ async function fillDropdownDirect(page: Page, selector: string, value: string, h
  * `byClicking` skips the first way, for a site where it is already known not to work.
  * Returns why it failed, or null, and which way set it.
  */
-export async function fillDropdown(page: Page, selector: string, value: string, hints: string[], byClicking = false): Promise<{ why: string | null; method: "script" | "clicked" }> {
+export async function fillDropdown(page: Page, selector: string, value: string, hints: string[], byClicking = false, out?: Picked): Promise<{ why: string | null; method: "script" | "clicked" }> {
   await whenOn(page, selector);
   if (!byClicking) {
-    const direct = await fillDropdownDirect(page, selector, value, hints);
+    const direct = await fillDropdownDirect(page, selector, value, hints, out);
     if (direct) return { why: null, method: "script" };
     // The component itself said it has no such option, so typing the same text into it would only be slower.
     if (direct === false) return { why: `no option matches "${value}"`, method: "script" };
   }
-  return { why: await fillDropdownByClicking(page, selector, value, hints), method: "clicked" };
+  return { why: await fillDropdownByClicking(page, selector, value, hints, out), method: "clicked" };
 }
 
-export function fillDropdownByClicking(page: Page, selector: string, value: string, hints: string[]): Promise<string | null> {
-  return inFront(page, () => clickAndPick(page, selector, value, hints));
+/** Where a dropdown fill says which option it took for the value. */
+export type Picked = { picked?: string };
+
+export function fillDropdownByClicking(page: Page, selector: string, value: string, hints: string[], out?: Picked): Promise<string | null> {
+  return inFront(page, () => clickAndPick(page, selector, value, hints, out));
 }
 
-async function clickAndPick(page: Page, selector: string, whole: string, hints: string[]): Promise<string | null> {
+async function clickAndPick(page: Page, selector: string, whole: string, hints: string[], out?: Picked): Promise<string | null> {
   // "Heading > Choice" names a choice in the list a heading opens. The first step is picked here, the rest under it.
   const [value = whole, ...deeper] = whole.split(CHOICE_PATH);
   if (!(await openDropdown(page, selector))) return "control not found";
@@ -291,6 +296,7 @@ async function clickAndPick(page: Page, selector: string, whole: string, hints: 
   }
   if (await page.awj<boolean>("searchesOnEnter", selector)) await closeDropdown(page);
   if (shown && !showsValue(choice, shown)) return `the list shows "${shown.slice(0, 40)}" after "${choice}" was clicked`;
+  if (out) out.picked = choice;
   return null;
 }
 

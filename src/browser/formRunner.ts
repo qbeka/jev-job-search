@@ -118,6 +118,17 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
   }
 }
 
+/**
+ * A dropdown that took an option for its value is expected to show that option from then on:
+ * "Canada +1" for the "+1" it was given. The read-back and the check before Submit go by it.
+ */
+function notePicks(plan: FillPlan, fills: Fill[]): void {
+  for (const f of fills) {
+    const planned = f.picked ? plan.fields.find((p) => p.selector === f.selector) : undefined;
+    if (planned && !planned.optionLabel) planned.optionLabel = f.picked ?? null;
+  }
+}
+
 /** What a list says when the answer it was given is not one of its choices. */
 export const UNFIT = /opens a list of its own|no option matches/;
 
@@ -155,6 +166,7 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
     if (!notOnScreen(plan.fields, states).length) break;
   }
   let failedRaw = await applyFills(page, plan.fills, profile, guide);
+  notePicks(plan, plan.fills);
   trace(`${job.company}: filled ${Date.now() - at.started}ms`);
   // A page that finishes starting up after the fill can wipe what was typed, and a phone box throws a number away
   // until its own checker has loaded. Such values are put back after a short wait, then once more after a longer one.
@@ -166,6 +178,7 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
     if (!wiped.length) break;
     await sleep(wait);
     const still = await applyFills(page, wiped, profile, guide);
+    notePicks(plan, wiped);
     failedRaw = [...failedRaw.filter((x) => !wiped.some((f) => f.selector === x.selector)), ...still];
     trace(`${job.company}: put back ${wiped.length - still.length} of ${wiped.length} wiped value(s) after ${wait}ms`);
   }
@@ -207,6 +220,7 @@ async function followUp(page: Page, jev: JevClient, profile: Profile, job: Job, 
     d.fields.push(...added);
     plan.fields.push(...more.fields);
     plan.fills.push(...more.fills);
+    notePicks(plan, more.fills);
     plan.drafts.push(...more.drafts);
     plan.reviews.push(...more.reviews);
     plan.jevCostUsd += more.jevCostUsd;

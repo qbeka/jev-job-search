@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { isFormWrite } from "../src/browser/cdp.js";
 import { closestOptions, pickOption } from "../src/browser/dropdowns.js";
-import { rightAlready } from "../src/browser/fill.js";
+import { rightAlready, tookChoice } from "../src/browser/fill.js";
 import { askAgain } from "../src/run/pipeline.js";
 import { showsPicked } from "../src/util/dates.js";
-import { comparePages, fieldsBlamed, isClean, isReady, pickNext, pickSubmit, notOnScreen, showsAnother, splitFailures } from "../src/browser/report.js";
+import { comparePages, fieldsBlamed, showsPlanned, isClean, isReady, pickNext, pickSubmit, notOnScreen, showsAnother, splitFailures } from "../src/browser/report.js";
 import type { FieldsDump } from "../src/forms/fields.js";
 
 const hints = ["Edmonton", "Alberta", "AB", "Canada"];
@@ -276,5 +276,20 @@ describe("a form that is not given up at the first trouble", () => {
     expect(askAgain(report([]), new Set())).toBe(false);
     expect(askAgain(report(first, { stuck: "held" }), new Set())).toBe(false);
     expect(askAgain(report(first, { resolution: { verdict: "skip" } }), new Set())).toBe(false);
+  });
+});
+
+describe("a dropdown that took an option for its value", () => {
+  it("has landed when it shows that option, though the option says more than the value", () => {
+    expect(tookChoice({ selector: "#country", kind: "combobox", value: "+1", picked: "Canada +1" }, "Canada +1")).toBe(true);
+    expect(tookChoice({ selector: "#country", kind: "combobox", value: "+1", picked: "Canada +1" }, "Anguilla +1")).toBe(false);
+    expect(tookChoice({ selector: "#country", kind: "combobox", value: "+1" }, "Canada +1")).toBe(false);
+    expect(tookChoice({ selector: "#c", kind: "combobox", value: "Canada" }, "Canada")).toBe(true);
+  });
+
+  it("is held to that option by the read-back and by the check before Submit", () => {
+    expect(showsPlanned({ kind: "combobox", value: "+1", optionLabel: "Canada +1" }, "Canada +1")).toBe(true);
+    expect(showsPlanned({ kind: "combobox", value: "+1", optionLabel: "Canada +1" }, "Anguilla +1")).toBe(false);
+    expect(showsPlanned({ kind: "combobox", value: "+1", optionLabel: null }, "Canada +1")).toBe(false);
   });
 });

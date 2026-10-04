@@ -13,7 +13,8 @@ import type { Resolution } from "../answers/memory.js";
 import type { ControlState } from "./session.js";
 import type { WaitingFor } from "../jobs/queue.js";
 
-export type Fill = { selector: string; kind: string; value: string };
+/** picked: the option a dropdown took for the value, in the list's own words ("Canada +1" for "+1"). It is what the box is then expected to show. */
+export type Fill = { selector: string; kind: string; value: string; picked?: string };
 export type FieldReport = { label: string; required: boolean; action: string; shown: string; note: string | null };
 export type TakeHome = { text: string; url: string };
 export type FillReport = {
@@ -143,7 +144,8 @@ export function showsPlanned(f: { kind: string; value: string | null; optionLabe
     const expect = [f.optionLabel, value].filter((x): x is string => !!x);
     return !!shown && expect.some((e) => n(e) === n(shown) || showsValue(e, shown));
   }
-  if (f.kind === "combobox") return showsPicked(value, shown);
+  // A dropdown shows the option that was picked for the value, which may say more than the value does.
+  if (f.kind === "combobox") return showsPicked(value, shown) || (!!f.optionLabel && showsPicked(f.optionLabel, shown));
   if (["text", "email", "tel", "url", "number", "textarea", "date"].includes(f.kind)) return showsValue(value, shown);
   return !!shown;
 }

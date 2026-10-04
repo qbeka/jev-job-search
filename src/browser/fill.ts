@@ -69,7 +69,7 @@ export async function applyFills(page: Page, wanted: Fill[], profile: Profile, g
   }
   for (const f of fills.filter((x) => x.kind === "combobox")) {
     const t = Date.now();
-    const { why, method } = await fillDropdown(page, f.selector, f.value, hints, guide?.prefer(f.selector) === "clicked");
+    const { why, method } = await fillDropdown(page, f.selector, f.value, hints, guide?.prefer(f.selector) === "clicked", f);
     if (why) failed.push({ selector: f.selector, why });
     else how.set(f.selector, method);
     await page.writesSettled(BROWSER.saveMs);
@@ -117,20 +117,25 @@ export async function applyFills(page: Page, wanted: Fill[], profile: Profile, g
       continue;
     }
     // A typed box must show the value it was given, in whatever shape the site writes it. Anything else is a retry.
-    const landed = !!shown[i] && (f.kind === "combobox" ? showsPicked(f.value, shown[i] ?? "") : !TYPED_KINDS.has(f.kind) || showsValue(f.value, shown[i] ?? ""));
+    const landed = !!shown[i] && (f.kind === "combobox" ? tookChoice(f, shown[i] ?? "") : !TYPED_KINDS.has(f.kind) || showsValue(f.value, shown[i] ?? ""));
     if (landed) guide?.landed(f.selector, how.get(f.selector) ?? "script");
     if (landed || failed.some((x) => x.selector === f.selector)) continue;
     if (f.kind === "checkbox" && !/^(true|yes|1|on|checked)$/i.test(f.value)) continue;
-    const why = f.kind === "combobox" ? await fillDropdownByClicking(page, f.selector, f.value, hints) : TYPED_KINDS.has(f.kind) ? await typeInto(page, f.selector, f.value) : f.kind === "radio" ? await clickGroupOption(page, f.selector, f.value) : "the page did not keep the value";
+    const why = f.kind === "combobox" ? await fillDropdownByClicking(page, f.selector, f.value, hints, f) : TYPED_KINDS.has(f.kind) ? await typeInto(page, f.selector, f.value) : f.kind === "radio" ? await clickGroupOption(page, f.selector, f.value) : "the page did not keep the value";
     const after = (await shownValues(page, [f.selector]))[0] ?? "";
     if (why || !after) failed.push({ selector: f.selector, why: why ?? "the page did not keep the value" });
-    else if (f.kind === "combobox" ? !showsPicked(f.value, after) : TYPED_KINDS.has(f.kind) && !showsValue(f.value, after)) failed.push({ selector: f.selector, why: `the box shows "${after.slice(0, 40)}" instead of "${f.value.slice(0, 40)}"` });
+    else if (f.kind === "combobox" ? !tookChoice(f, after) : TYPED_KINDS.has(f.kind) && !showsValue(f.value, after)) failed.push({ selector: f.selector, why: `the box shows "${after.slice(0, 40)}" instead of "${f.value.slice(0, 40)}"` });
     else guide?.landed(f.selector, TYPED_KINDS.has(f.kind) ? "typed" : "clicked");
   }
   return failed;
 }
 
 export const TYPED_KINDS = new Set(["text", "email", "tel", "url", "number", "textarea"]);
+
+/** True when a dropdown shows the value it was given, or the option that was picked for that value ("Canada +1" for "+1"). */
+export function tookChoice(f: Fill, shown: string): boolean {
+  return showsPicked(f.value, shown) || (!!f.picked && showsPicked(f.picked, shown));
+}
 
 /** True when a box shows the very value it is about to be given. Only a box that shows something counts: an unticked checkbox is written as before. */
 export function rightAlready(f: Fill, shown: string): boolean {
