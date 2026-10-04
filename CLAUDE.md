@@ -4,7 +4,7 @@ Read `README.md` first, then `docs/ARCHITECTURE.md`. The CLI is the product:
 `discover` builds the queue, `apply` fills, resolves, verifies and submits.
 `src/run/pipeline.ts` is the loop itself. The skills in `.claude/skills/`
 run it with a person in the loop: `/setup`, `/discover`, `/apply`,
-`/accounts`, `/profile`.
+`/accounts`, `/daily`, `/profile`.
 
 If `data/profile.json` does not exist, the person in front of you has not
 set the tool up. Offer `/setup` before anything else. `npx jev
@@ -109,6 +109,15 @@ doctor` says what is in place and what to do next.
   writer marked reusable, and only when the field can take it. A reused
   answer is read back from the page like any other. Do not loosen
   `MEMORY.sameQuestionConfidence` without measuring wrong matches.
+- **The daily run stays inside its policy and its limits.** `daily` sends
+  with nobody watching, so it does nothing without `data/policy.json`,
+  checks every job against it in code (`policyRefuses`), and keeps the
+  limits in `DAILY`: applications per day, per board and per employer,
+  minutes between two submissions to one board, a board left alone until
+  tomorrow after a human check, the run stopped at the second. Never raise
+  them to send more. Nothing is scheduled until the person runs
+  `schedule install`. You never run `daily` without `--dry` and never
+  install the schedule: those are the person's.
 - **Pace every site.** Job boards drop or refuse bursts. Concurrency and
   gaps per host are in `RUN`; do not remove them to go faster.
 - **The tool learns by keeping notes, and reads them before it acts.** Site

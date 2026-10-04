@@ -25,6 +25,7 @@ check before you publish a fork.*
 | Writing cover letters or volunteering a GPA. A required cover letter skips the job; a required GPA field gets the real number. | `src/profile/fieldKeys.ts`, `planField` |
 | Supplying references. A posting that requires them is skipped and logged. | `src/jobs/rate.ts`, the skill |
 | Clicking "Apply with LinkedIn" or resume-autofill helpers that would overwrite the plan. | `mapForm` skips autofill inputs; the skill |
+| Sending with nobody watching, outside the person's standing policy or the daily limits. `daily` does nothing without `data/policy.json`; every job is checked against it in code; per-day, per-board and per-employer numbers and the pauses between submissions are fixed in `DAILY`. A board that asks for a human check is left alone until tomorrow, and a second stops the run. Nothing is scheduled until the person runs `schedule install`. | `src/run/policy.ts`, `dailyRun` in `src/run/daily.ts`, `src/run/schedule.ts` |
 | Submitting without being told to. `apply` fills and verifies; only `--submit` or `submit` sends. | `src/cli.ts`, the skill |
 
 The user can still misrepresent themselves by putting false data in the

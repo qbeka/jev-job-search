@@ -93,13 +93,14 @@ A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like
 
 ## Other commands
 
-`/setup`, `/discover` and `/apply` are the workflow. Seven more skills and a handful of terminal commands extend it once your profile is in place:
+`/setup`, `/discover` and `/apply` are the workflow. Eight more skills and a handful of terminal commands extend it once your profile is in place:
 
 - **`/tailor <job id> [--cover]`** writes a one-page resume for the job from your profile and the posting, and with `--cover` a one-page cover letter, and shows you the PDFs. Every number and every name of a tool, a place or a company in the draft is checked against your profile in code; the keywords the posting wants and your profile cannot support are listed, never stuffed in. `/apply --tailor --cover` writes and attaches them as it applies. See [A resume and a cover letter written for the job](#a-resume-and-a-cover-letter-written-for-the-job).
 - **`/report`** opens a dashboard on your own machine: applications sent, today, waiting for you, left for you; sent per day and per board; every job with its status, which you can change by hand, and a notes box per row. `npx jev report --static applications/report.html` writes a snapshot page to keep. Nothing leaves your machine.
 - **`/expand`** reads the public places your profile already links to (your GitHub repositories, your portfolio site) and proposes projects, skills and facts that are missing from the profile, each with its source. Nothing is added without your yes.
 - **`/add-source`** adds a job board or a public list as a source: it inspects the site, writes the source in the shape of the shipped ones, tests it on a captured sample and runs one live query before registering it.
 - **`/accounts`** lets the tool apply on Workday, where every employer wants its own account. You say what it may do, one thing at a time: sign in to accounts you have, make one where there is none, tick the account terms, read the verification email. Your password goes into your Mac's Keychain, typed by you. Off until you turn it on. See [Jobs that want an account](#jobs-that-want-an-account).
+- **`/daily`** sets up the daily run: a few applications a day with nobody watching, inside a standing policy you write (how many, where, which employers never) and limits meant to look like one careful person: 15 a day, one per employer, minutes between two applications to one board, a full stop when boards start asking for a human check. `npx jev schedule install --at 09:00` makes it run by itself; nothing is scheduled until you do. See [docs/DAILY.md](docs/DAILY.md).
 - **`/profile`** changes your profile, your standing answers (how recurring questions are answered), your drafts and your voice guide with you. When a form answer looked wrong, this is where you fix it, once.
 - **`resume`** watches the forms left open for you (an emailed code, a robot check, a sign-in) while you finish them, and records each application when its confirmation shows. **`reconcile`** settles a form whose Submit was clicked with no confirmation seen: it reads the tab again and records it as applied or as not sent. Such a form is never sent twice.
 - **`log`**, **`status`** and **`cost`** show your applications (`log --manual` lists what the tool left for you), the totals and skip reasons, and what you have spent. `npx jev log --open` opens your applications in your spreadsheet program.
@@ -122,6 +123,7 @@ jev-job-search/
 │   ├── expand/                # /expand: enrich the profile from your public links
 │   ├── add-source/            # /add-source: a new job board or list
 │   ├── accounts/              # /accounts: boards that want an account (Workday)
+│   ├── daily/                 # /daily: the daily run and its schedule
 │   └── profile/               # /profile: change what the tool knows about you
 ├── applications/              # Your records (git-ignored)
 │   ├── applied.csv            #   what was sent, newest first
@@ -134,6 +136,7 @@ jev-job-search/
 │   └── tailored/              #   <Company>_<Role>_<id>/ resume.pdf, cover.pdf, resume.md
 ├── data/                      # Your profile and the tool's working files (git-ignored, examples tracked)
 │   ├── accounts.json          #   the job-board accounts you allowed (no password in it)
+│   ├── policy.json            #   your standing instructions for the daily run
 │   ├── profile.json           #   who you are; standing answers to recurring questions
 │   ├── bank.json              #   your starting drafts for common open questions
 │   ├── voice.local.md         #   how you write

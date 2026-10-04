@@ -11,6 +11,19 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added (the daily run)
+- `daily`: the day's applications with nobody watching. It searches, then
+  fills and sends one job at a time inside your standing policy
+  (`data/policy.json`) and fixed limits: 15 a day unless your policy says
+  otherwise and never more than 25, 8 to one board, 1 to one employer, 3 to
+  6 minutes between two applications to one board. A board that asks for a
+  human check is left alone until tomorrow, and the second one stops the
+  run. It does nothing until the policy file exists.
+- `daily --dry` rehearses the day without sending or recording.
+- `schedule install --at HH:MM | remove | status`: runs `daily` every day
+  through macOS's own scheduler. Nothing is scheduled until you install it.
+- `docs/DAILY.md` and the `/daily` skill.
+
 ### Added
 - **Accounts, for Workday.** The tool can apply on Workday, where every
   employer keeps its own accounts. Everything is off until you allow it,

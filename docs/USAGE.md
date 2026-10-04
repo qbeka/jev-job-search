@@ -376,8 +376,8 @@ None of this is built yet.
 - **SmartRecruiters.** Its form is drawn in a way the tool cannot read yet.
 - **Windows and Linux.** The tool is tested only on a Mac.
 
-- **A daily run** with conservative limits, off by default, and a view of
-  what came back by email.
+- **What came back by email**: confirmations, rejections and interview
+  requests matched to your applications, and a review inbox.
 - **More boards with accounts.** Workday is the first; each further board
   is one adapter in `src/accounts/`.
 

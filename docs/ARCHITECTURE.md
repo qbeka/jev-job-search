@@ -251,6 +251,27 @@ around a read-modify-write; `mutateQueue`, `mutateRows` and
 lock a browser run holds for its whole length; a second run is refused,
 and the dashboard shows which run holds it.
 
+## The daily run (`src/run/daily.ts`)
+
+`daily` is the apply loop with nobody watching. `dailyRun` owns the rules
+and touches no browser: it is given `run(id)`, which takes one job through
+`takeJobs` and `pipeline` and says what its record became. Each round it
+reads the queue again, counts what today already holds (`countToday`:
+sent and unconfirmed, per board and per employer, from `appliedAt` and
+`updatedAt` on the local calendar day), and picks the best queued job that
+the policy allows (`policyRefuses`), whose board is not paused or full,
+whose employer has had nothing today and has fewer than two forms open,
+and which `accountGate` lets through. Two submissions to one board are 3
+to 6 minutes apart; a job on another board goes meanwhile. It stops at the
+day's number, at no suitable job, and at its limits of jobs, minutes and
+JEV spend. A human check pauses that board until the next local day
+(`data/runs/board-pauses.json`), and the second board to ask stops the
+run. The summary is appended to `data/runs/daily-<date>.json`.
+
+`src/run/schedule.ts` writes one LaunchAgent that starts `jev daily`. It
+holds the path to Node, the project folder, the time and a search path,
+and nothing else.
+
 ## Accounts (`src/accounts/`) and verification mail (`src/mail/`)
 
 A board that wants an account is handled by an **adapter**. It names every
@@ -419,6 +440,9 @@ part of correctness.
 | `data/runs/writer-usage.jsonl` | one JSON object per Claude call: purpose, job, tokens, cost | the writer | `cost` |
 | `data/runs/<id>.plan.json`, `<id>.report.json` | the dump and plan of the current page, and the verified result | the apply loop | `resolve`, `inspect`, `submit`, `survey` |
 | `data/runs/browser-session.json` | which tab holds which job | `fill` | every later step |
+| `data/policy.json` | `Policy` v1: the standing instructions for `daily` | the person, `/daily` | `daily`, `schedule install` |
+| `data/runs/daily-<date>.json`, `data/runs/daily.log` | each daily run's summary; what the scheduled run printed | `daily`, the LaunchAgent | the person, `/daily` |
+| `data/runs/board-pauses.json` | boards `daily` leaves alone until a date | `daily` | `daily` |
 | `data/accounts.json` | `AccountsFile` v1: what the person allowed, one entry per employer account. No secret | `accounts`, the sign-in | the sign-in, `capabilityFor`, discover |
 | `data/runs/accounts-state.json` | last sign-in, tries today, pauses, accounts made per day | the sign-in | the sign-in, `capabilityFor` |
 | `data/gmail.json` | the connected address and the OAuth client id. The tokens are in the Keychain | `gmail connect` | the verifier |
