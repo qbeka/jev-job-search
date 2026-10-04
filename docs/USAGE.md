@@ -110,7 +110,8 @@ To add a list or a company, see [docs/SOURCES.md](docs/SOURCES.md).
 
 Before it spends anything, the tool removes jobs that:
 
-- need an account to apply
+- need an account to apply, unless it is a Workday job and you allowed
+  accounts (see [ACCOUNTS.md](ACCOUNTS.md))
 - were posted more than 14 days ago
 - are not software jobs, by their title
 - have a French title (the tool writes in English only)
@@ -138,7 +139,8 @@ date. It ranks the job lower and leaves the choice to you.
 | BambooHR | Works. Its "confirm you are not a robot" check after Submit is yours: that form stays open for you, and the run goes on. |
 | Jobvite, Tesla, and other forms that run over several pages | Works. The tool fills a page, checks it, clicks the form's own Next, and fills the next page, up to 8 pages. |
 | SmartRecruiters | Not supported yet. The tool cannot read its form. It skips these jobs. |
-| Workday, iCIMS, Taleo, Oracle, SuccessFactors, Amazon, LinkedIn, and any site that wants a sign-in | The tool does not sign in anywhere. It skips these jobs. If it meets a sign-in page during a run, it closes the page, puts the job on your by-hand list, and skips that site from then on. |
+| Workday | Off until you allow it with `/accounts`. Then the tool signs in with your account at that employer, or makes one if you said it may, and fills the form page by page. The sign-in is tested against scripted pages only, and Workday's own application pages have not been seen, so rehearse first. See [ACCOUNTS.md](ACCOUNTS.md). |
+| iCIMS, Taleo, Oracle, SuccessFactors, Amazon, LinkedIn, and any other site that wants a sign-in | The tool does not sign in there. It skips these jobs. If it meets a sign-in page during a run, it closes the page, puts the job on your by-hand list, and skips that site from then on. |
 
 ### Which parts of a form it fills
 
@@ -182,7 +184,8 @@ date. It ranks the job lower and leaves the choice to you.
 The tool does not send a form, closes it, and puts the job on your by-hand
 list with the reason when:
 
-- the site wants a sign-in or an account
+- the site wants a sign-in or an account, and it is not one you set up
+  with `/accounts`
 - the form asks you to sign: to type your name under an NDA or another
   contract, or to tick that you agree to be bound by one
 - a required question has no true answer in your profile, such as a
@@ -195,6 +198,13 @@ list with the reason when:
 It leaves the filled form open for you when the site emails you a code or
 shows a "prove you are human" test after you send. On 2 October 2026
 Greenhouse asked for a code on 7 of 13 forms sent within a few minutes.
+
+A sign-in the tool started and could not finish is different: the page
+stays **open** in the tool's window, you get a notification, and the run
+goes on to the next job. That happens for a robot check, a phone code, a
+passkey, single sign-on, account terms you did not approve, a password the
+board refused, and a verification email the tool could not use. Finish it
+there, then run `npx jev resume --submit`.
 
 ## Find your applications
 
@@ -366,5 +376,9 @@ None of this is built yet.
 - **SmartRecruiters.** Its form is drawn in a way the tool cannot read yet.
 - **Windows and Linux.** The tool is tested only on a Mac.
 
-Signing in to job sites is not planned. The tool skips those sites and
-lists their jobs for you to do by hand.
+- **A daily run** with conservative limits, off by default, and a view of
+  what came back by email.
+- **More boards with accounts.** Workday is the first; each further board
+  is one adapter in `src/accounts/`.
+
+LinkedIn is not planned: its terms forbid automation.

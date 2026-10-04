@@ -21,6 +21,7 @@ import { candidateOptions, closestOptions, readDropdownOptions } from "./dropdow
 import { applyFills, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
 import { learn, notesFor, signatureOf, type Method } from "../knowledge/sites.js";
 import { blockedReport, comparePages, showsPlanned, emptyRequired, emptyRequiredFields, isClean, isReady, loadPlan, loadReport, pickNext, savePlan, saveReport, SIGN_IN_REASON, splitFailures, type Failure, type FieldReport, type Fill, type FillReport } from "./report.js";
+import { signInFor } from "../accounts/gate.js";
 import { controlStates, dump, goto, inFront, inTurn, install, loadSession, mutateSession, pageFor, settle, shownValues, trace, type Point } from "./session.js";
 
 /** The text of a button that leads from a posting to its form. */
@@ -81,7 +82,20 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
     mutateSession((s) => {
       s[job.id] = { targetId: target.id, url: d.url, state: "filling", since: new Date().toISOString() };
     });
-    if (!isApplicationForm(d) && !d.hasPassword) {
+    // A board the tool can sign in to: the person's account is used, or made where they allowed it. Anything the
+    // sign-in cannot finish with certainty comes back as what the job now waits for.
+    const auth = await signInFor(page, applyUrlFor(job));
+    if (auth && !auth.ok) return saveReport({ ...blockedReport(job, auth.reason, d.url, seconds()), auth: { status: auth.status, waitingFor: auth.waitingFor } });
+    if (auth) {
+      trace(`${job.company}: signed in (${auth.steps.join(", ")}) ${Date.now() - started}ms`);
+      signal?.throwIfAborted();
+      await settle(page);
+      await install(page);
+      d = await dump(page);
+    }
+    // Behind a sign-in the page is the application by construction, whatever its first page asks for.
+    const isForm = (x: FieldsDump) => isApplicationForm(x) || (!!auth && !x.hasPassword && x.fields.length > 0);
+    if (!isForm(d) && !d.hasPassword) {
       // Job boards answer bursts with an error page. One unhurried second try settles most of them.
       const first = await decidePageState(jev, await page.evaluate<string>("window.__awj.pageText()"), d.url, job.id);
       if (first.state === "error" || first.state === "other") {
@@ -92,7 +106,7 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
     }
     // A password box means a sign-in or account page. Nothing is typed into it. The job is left for the person.
     if (d.hasPassword) return saveReport(blockedReport(job, SIGN_IN_REASON, d.url, seconds()));
-    if (!isApplicationForm(d)) {
+    if (!isForm(d)) {
       const state = await decidePageState(jev, await page.evaluate<string>("window.__awj.pageText()"), d.url, job.id);
       return saveReport(blockedReport(job, `no form found, page looks like: ${state.state}`, d.url, seconds()));
     }

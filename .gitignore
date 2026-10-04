@@ -13,6 +13,8 @@ applications/*
 !applications/README.md
 !applications/example.csv
 data/queue.json
+data/accounts.json
+data/gmail.json
 data/cache/
 data/runs/
 documents/*

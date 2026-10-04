@@ -38,7 +38,7 @@
     if (el.type === "radio" && el.name) return `${tag}[name="${attr(el.name)}"]`;
     if (stableId(el.id)) return "#" + cssEscape(el.id);
     // A name the site's own tests use for the control stays put across renders.
-    for (const a of ["data-testid", "data-ui", "data-qa"]) {
+    for (const a of ["data-testid", "data-ui", "data-qa", "data-automation-id"]) {
       const v = el.getAttribute(a);
       if (v && unique(`${tag}[${a}="${attr(v)}"]`)) return `${tag}[${a}="${attr(v)}"]`;
     }
@@ -251,6 +251,8 @@
     const tag = el.tagName.toLowerCase();
     const type = (el.getAttribute("type") || (tag === "input" ? "text" : tag)).toLowerCase();
     if (SKIP_TYPES.has(type) && !el.matches(MENU_BUTTON)) return;
+    // A box for a one-time code is never read: a code a site sends is typed by the person, or by the sign-in for an account they set up.
+    if (/one-time-code/i.test(el.getAttribute("autocomplete") || "")) return;
     const isControl = ["input", "select", "textarea"].includes(tag);
     // The list a combobox opens is that combobox's, not a question of its own.
     if (!isControl && el.id && document.querySelector(`[aria-controls="${attr(el.id)}"], [aria-owns="${attr(el.id)}"]`)) return;

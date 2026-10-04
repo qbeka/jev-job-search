@@ -6,6 +6,8 @@ import { JevClient } from "../jev/client.js";
 import { ashbyJobId, ashbySlug, fetchAshbyBoard } from "../sources/ats/ashby.js";
 import { fetchGreenhouseBoard, greenhouseJobId, greenhouseSlug } from "../sources/ats/greenhouse.js";
 import { fetchLeverBoard, leverJobId, leverSlug } from "../sources/ats/lever.js";
+import { fetchWorkdayPosting } from "../sources/ats/workday.js";
+import { capabilityFor } from "../accounts/capability.js";
 import type { Profile } from "../profile/schema.js";
 import { canonicalUrl, jobId, type Job } from "./normalize.js";
 import { entryFor, loadQueue, MAYBE_SENT, mutateQueue, type QueueEntry } from "./queue.js";
@@ -23,13 +25,16 @@ export async function fetchPosting(url: string): Promise<Job | null> {
   if (lv) return pick(await fetchLeverBoard(lv, lv), leverJobId(url));
   const ab = ashbySlug(url);
   if (ab) return pick(await fetchAshbyBoard(ab, ab), ashbyJobId(url));
-  return null;
+  return fetchWorkdayPosting(url);
 }
 
 /** Reads, rates and queues one posting. Returns its queue entry, or throws with the reason it could not be read. */
 export async function addJob(jev: JevClient, profile: Profile, url: string): Promise<QueueEntry> {
   const job = await fetchPosting(url);
-  if (!job) throw new Error(`could not read a posting at ${url}. The tool reads Greenhouse, Lever and Ashby links; for another board, run discover and apply from the queue.`);
+  if (!job) throw new Error(`could not read a posting at ${url}. The tool reads Greenhouse, Lever, Ashby and Workday links; for another board, run discover and apply from the queue.`);
+  // A board that wants an account is taken only where the person has one or allowed one.
+  const account = capabilityFor(job.url);
+  if (account?.verdict === "no") throw new Error(`${job.company} is on Workday, where every employer wants an account, and you have not allowed one. To allow it: npx jev accounts add workday --email you@example.com --create --terms --verify-email`);
   const before = loadQueue().entries.find((e) => e.job.id === job.id);
   if (before && MAYBE_SENT.includes(before.status)) return before;
   const fit = await rateJob(jev, job, profile);

@@ -9,10 +9,15 @@ check before you publish a fork.*
 |---|---|
 | Lying on a form. Work authorization, citizenship, education, graduation date and employment dates come from `data/profile.json` and are not changed to fit a posting. | `src/forms/mapForm.ts` resolves authorization per country in code; the `/apply` skill forbids overriding it |
 | Claiming a fact that is not in the profile. Free-text answers may use only `facts`, `experience`, `projects`, and the posting. | `data/voice.md`, `src/answers/context.ts`, the skill |
-| Creating accounts on careers portals. Workday, iCIMS, Taleo, Oracle, SuccessFactors and Amazon Jobs are filtered out before rating. | `src/jobs/hardFilters.ts` |
+| Creating an account, or signing in, where the person did not set it up. iCIMS, Taleo, Oracle, SuccessFactors and Amazon Jobs are filtered out before rating, and so is Workday until the person runs `/accounts`. | `src/jobs/hardFilters.ts`, `capabilityFor` in `src/accounts/capability.ts` |
+| Retrying a password, or making a new account after a sign-in failed. One try; a refusal or a lockout pauses the account for a day and hands the page to the person. | `ensureSignedIn` in `src/accounts/auth.ts` |
+| Typing a password anywhere but a password box an adapter names, on an origin the account allows. | `enter` in `src/accounts/auth.ts` |
+| Accepting terms the person did not approve, or ticking a marketing box. | `ensureSignedIn`; the adapter names the one terms box |
+| Using a verification email that does not fit: wrong sender, sender not verified by the mail server, wrong recipient, older than the request, used before, more than one, or a link off the employer's own site. | `whyNot`, `usable` in `src/mail/verification.ts`; `follow` in `src/accounts/authPage.ts` stops a redirect off-site |
+| Sending a password, a code, a token or an email's content to Claude or JEV, or writing one to a file or a log. | `Secret` and `scrub` in `src/util/redact.ts`, `src/accounts/secrets.ts` |
 | Passing a human check. This covers CAPTCHAs and the code a board emails to confirm a person is applying. The tool reads no email for these and types no code: the filled form stays open, the person is notified, and `resume` records the application once they finish. | `submitJob` reports the page as it is; `submitAndRecord` in `src/run/pipeline.ts` records `awaiting_user_action` and calls `assist` |
 | Sending an application twice. From the click on, a job is `submission_unknown` until a confirmation is read; it is never filled or sent again before that. A job already applied to is refused without `--resubmit`. | `submitAndRecord`, `reconcile` and `pickJobs` in `src/run/pipeline.ts` |
-| Signing in. A page with a password box is closed, the job is listed in `applications/manual.csv`, and the site is skipped from then on. No password is stored or typed. | `fillJob` in `src/browser/formRunner.ts`, `outcomeOf` in `src/run/outcome.ts` |
+| Signing in on a site with no adapter. A page with a password box is closed, the job is listed in `applications/manual.csv`, and the site is skipped from then on. | `fillJob` in `src/browser/formRunner.ts`, `outcomeOf` in `src/run/outcome.ts` |
 | Signing a contract. A form that asks the candidate to type their name under an agreement, or to tick that they are bound by one, is set aside for them. | `SIGNATURE_LABEL` in `src/forms/mapForm.ts`, the writer's rules in `src/answers/resolve.ts` |
 | Submitting a form it has not verified. Every wanted value must be read back from the page and no required field may be empty. | `isReady`, `submitJob` in `src/browser/formRunner.ts` |
 | Calling an application sent because the button was clicked. The page after the click is classified, and only a confirmation counts. | `submitJob`, `decidePageState` |
@@ -74,13 +79,15 @@ Automated form submission may be against the terms of a given job board
 or ATS. The tool uses a browser on the user's own machine and their own
 identity, submits one application per posting, paces itself per site, and
 does not try to look like anything it is not: no stealth flags, no CAPTCHA
-solving, no account creation. Read the terms of the sites you use and decide
+solving, and an account only where you allowed one, under your own address,
+at most a few a day. A site's account terms are accepted for you only if you
+said so; read them. Read the terms of the sites you use and decide
 for yourself.
 
 ## Before open-sourcing a fork
 
 ```bash
-git status --ignored | grep -E "data/|applications/applied.csv|applications/manual.csv"   # profile.json, bank.json, voice.local.md, memory.json, knowledge.json, resume, the csv files, queue, runs must be ignored
+git status --ignored | grep -E "data/|applications/applied.csv|applications/manual.csv"   # profile.json, bank.json, voice.local.md, memory.json, knowledge.json, accounts.json, gmail.json, resume, the csv files, queue, runs must be ignored
 git log -p | grep -i -E "sk-or-v1-|@gmail|phone" # nothing should match
 npm audit --omit=dev
 ```

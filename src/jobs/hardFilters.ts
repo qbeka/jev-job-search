@@ -33,8 +33,16 @@ export function locationTier(locations: string[]): LocationTier {
 }
 
 /** us: the candidate's standing in the United States. A candidate who may work there is not ruled out by "no sponsorship". */
-export function preFilter(job: Job, now = new Date(), walled: (url: string) => boolean = isWalled, us: { authorized: boolean; citizen: boolean } = { authorized: false, citizen: false }, maxAgeDays: number = DISCOVER.maxAgeDays): string | null {
-  if (job.ats === "workday") return "workday (needs an account per company)";
+export function preFilter(
+  job: Job,
+  now = new Date(),
+  walled: (url: string) => boolean = isWalled,
+  us: { authorized: boolean; citizen: boolean } = { authorized: false, citizen: false },
+  maxAgeDays: number = DISCOVER.maxAgeDays,
+  /** True for a job on an account board where the person has an account, or let the tool make one. */
+  mayApplyWithAccount: (url: string) => boolean = () => false,
+): string | null {
+  if (job.ats === "workday" && !mayApplyWithAccount(job.url)) return "workday (needs an account per company)";
   if (job.ats === "taleo" || job.ats === "oracle" || job.ats === "successfactors" || job.ats === "icims" || job.ats === "amazon") {
     return `${job.ats} (needs an account)`;
   }

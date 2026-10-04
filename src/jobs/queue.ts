@@ -28,7 +28,7 @@ export const QueueStatus = z.enum([
 export type QueueStatus = z.infer<typeof QueueStatus>;
 
 /** What a form in awaiting_user_action waits for. */
-export const WaitingFor = z.enum(["human_code", "robot_check", "login", "agreement", "phone", "passkey", "sso", "unknown"]);
+export const WaitingFor = z.enum(["human_code", "robot_check", "login", "agreement", "phone", "passkey", "sso", "email_link", "unknown"]);
 export type WaitingFor = z.infer<typeof WaitingFor>;
 
 /** Statuses only a run sets and holds. With no run alive, a job left in one of these was interrupted. */

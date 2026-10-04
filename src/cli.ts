@@ -18,7 +18,10 @@ import { acquireRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob } from "./browser/submit.js";
-import { childEnv, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { ACCOUNTS, childEnv, GMAIL, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { addEmployer, clearPauses, describeAccounts, removeAccounts, setRule } from "./accounts/commands.js";
+import { defaultStore, passwordProblems } from "./accounts/secrets.js";
+import { connect as connectGmail, disconnect as disconnectGmail, loadGmail } from "./mail/gmail.js";
 import { installRedaction } from "./util/redact.js";
 import { discover } from "./discover.js";
 import { formatChecks, isReadyToRun, nextStep, runChecks } from "./doctor.js";
@@ -125,7 +128,7 @@ const documentsFromOptions = (o: { tailor?: boolean; cover?: boolean; plain?: bo
 
 program
   .command("apply [ids...]")
-  .description("Fill each form, answer what is open, walk its pages, check every answer, and with --submit send every form that is ready. An id can also be a posting's link on Greenhouse, Lever or Ashby")
+  .description("Fill each form, answer what is open, walk its pages, check every answer, and with --submit send every form that is ready. An id can also be a posting's link on Greenhouse, Lever, Ashby or Workday")
   .option("--count <n>", "with no ids: take this many jobs from the top of the queue", int, 1)
   .option("--submit", "send each form the moment it is ready. Without it, ready forms are left open in the window")
   .option("--dry", "a rehearsal: record nothing, send nothing, close the tabs")
@@ -150,7 +153,8 @@ program
         const done = new Map(loadQueue().entries.map((e) => [e.job.id, e]));
         const count = (...statuses: string[]) => reports.filter((r) => statuses.includes(done.get(r.jobId)?.status ?? "")).length;
         console.log(`\n${count("applied")} applied, ${count("needs_review", "blocked", "login_required")} left for you, ${count("skipped", "failed")} skipped, ${count("in_progress")} filled and waiting for submit`);
-        if (count("awaiting_user_action")) console.log(`${count("awaiting_user_action")} form(s) are open and waiting for you (an emailed code, a robot check). Finish each in the tool's window, then run: npx jev resume`);
+        const waiting = count("awaiting_user_action", "awaiting_email_verification");
+        if (waiting) console.log(`${waiting} form(s) are open and waiting for you (an emailed code, a robot check, a sign-in). Finish each in the tool's window, then run: npx jev resume`);
         if (count("submission_unknown")) console.log(`${count("submission_unknown")} form(s) were clicked and not confirmed. They will not be sent again until settled: npx jev reconcile`);
         console.log(whereTheRecordIs());
       }
@@ -276,12 +280,14 @@ program
 
 program
   .command("resume [ids...]")
-  .description("Watch the forms that were left open for you while you finish them (an emailed code, a robot check), and record each application when its confirmation shows. Nothing is typed or clicked for you")
-  .action(async (ids: string[]) => {
+  .description("Watch the forms that were left open for you while you finish them (an emailed code, a robot check, a sign-in), and record each application when its confirmation shows. Nothing is typed or clicked for you. A form you signed in to is then filled like any other")
+  .option("--submit", "after a sign-in you finished: send each of those forms the moment it is ready")
+  .action(async (ids: string[], o: { submit?: boolean }) => {
     const jev = new JevClient();
     const sent: string[] = [];
+    const signedIn: string[] = [];
     await inRun("resume", async () => {
-      const waiting = loadQueue().entries.filter((e) => e.status === "awaiting_user_action" && (!ids.length || ids.includes(e.job.id)));
+      const waiting = loadQueue().entries.filter((e) => (e.status === "awaiting_user_action" || e.status === "awaiting_email_verification") && (!ids.length || ids.includes(e.job.id)));
       if (!waiting.length) return console.log("No form is waiting for you.");
       let skip = false;
       if (process.stdin.isTTY) process.stdin.on("data", () => (skip = true));
@@ -291,9 +297,15 @@ program
         skip = false;
         const outcome = await resume(jev, e.job.id, { stop: () => skip });
         if (outcome === "applied") sent.push(e.job.id);
-        console.log(outcome === "applied" ? "  Sent and recorded." : outcome === "gone" ? "  Its tab was closed. It is on your by-hand list." : "  Not sent yet. It stays open; run resume again when you are ready.");
+        if (outcome === "signed_in") signedIn.push(e.job.id);
+        console.log(outcome === "applied" ? "  Sent and recorded." : outcome === "signed_in" ? "  Signed in. Its form is filled next." : outcome === "gone" ? "  Its tab was closed. It is on your by-hand list." : "  Not done yet. It stays open; run resume again when you are ready.");
       }
       if (process.stdin.isTTY) process.stdin.pause();
+      if (signedIn.length) {
+        documentsFromOptions({});
+        const { sent: now } = await pipeline(takeJobs(signedIn, { count: signedIn.length, dry: false }), { submit: !!o.submit, dry: false, fresh: false, quiet: false });
+        sent.push(...now);
+      }
     });
     await noteApplied(sent);
   });
@@ -331,6 +343,72 @@ program
   });
 
 // ------------------------------------------------------ forms left for you
+
+program
+  .command("accounts [action] [target]")
+  .description("Job-board accounts the tool may use. list (the default) | add workday | add <a link to the employer's careers site> | password | status | disconnect <id or all>. Today the tool signs in on Workday")
+  .option("--email <address>", "the address your accounts use. The default is the one in your profile")
+  .option("--create", "the tool may make an account where the employer has none for you")
+  .option("--terms", "the tool may tick the account terms box on the sign-up form")
+  .option("--verify-email", "the tool may read the verification email the board sends you (needs: npx jev gmail connect)")
+  .option("--max-new <n>", "new employer accounts per day, at most", int)
+  .option("--clear", "with status: lift every pause, after you fixed what was wrong")
+  .action((action: string | undefined, target: string | undefined, o: { email?: string; create?: boolean; terms?: boolean; verifyEmail?: boolean; maxNew?: number; clear?: boolean }) => {
+    const store = defaultStore();
+    const consent = () => ({ email: o.email ?? loadProfile().email, create: !!o.create, terms: !!o.terms, verifyEmail: !!o.verifyEmail, ...(o.maxNew !== undefined ? { maxNew: o.maxNew } : {}) });
+    if (!action || action === "list" || action === "status") {
+      if (o.clear) console.log(`${clearPauses()} pause(s) lifted.`);
+      return console.log(describeAccounts(store).join("\n"));
+    }
+    if (action === "password") {
+      if (process.platform !== "darwin") return console.log("This machine has no Keychain. Put the password in .env as JEV_ACCOUNTS_PASSWORD=...");
+      console.log("Type the one password your job-board accounts use. It goes straight into your Mac's Keychain: it is not shown, not saved in a file, and never sent to Claude or JEV.\nWorkday wants at least 8 characters with a digit, a lower-case letter, an upper-case letter and a special character.");
+      if (!store.setByPerson(ACCOUNTS.passwordItem)) return console.log("Nothing was stored.");
+      const stored = store.get(ACCOUNTS.passwordItem);
+      const problems = stored ? passwordProblems(stored) : ["to be readable from the Keychain"];
+      if (problems.length) return console.log(`Stored, but Workday will refuse it: it needs ${problems.join(", ")}. Run the command again with another password.`);
+      clearPauses();
+      return console.log("Stored. To see what is set up: npx jev accounts");
+    }
+    if (action === "add") {
+      if (!target) return console.log("Say what to add: `accounts add workday` for every Workday employer, or `accounts add <link>` for one employer.");
+      if (target === "workday") {
+        setRule("workday", consent());
+        console.log("Saved. Jobs on Workday are found by the next discover.");
+      } else {
+        const a = addEmployer(target, consent());
+        console.log(`Saved ${a.id} (${a.mode === "create_if_missing" ? "the tool may make the account" : "an account you already have"}).`);
+      }
+      return console.log(describeAccounts(store).join("\n"));
+    }
+    if (action === "disconnect") {
+      if (!target) return console.log("Say which: an account id from `npx jev accounts`, or all.");
+      console.log(`${removeAccounts(target)} account(s) forgotten. The accounts themselves still exist on the employers' sites, and the password stays in your Keychain.`);
+      return;
+    }
+    console.log("The actions are: list, add, password, status, disconnect");
+  });
+
+program
+  .command("gmail <action>")
+  .description("Let the tool read the email a job board sends to prove your address when an account is made. connect | status | disconnect. Read-only access, kept in your Keychain")
+  .option("--client <file>", "with connect: the OAuth client file Google Cloud gave you (a Desktop app client)")
+  .action(async (action: string, o: { client?: string }) => {
+    const store = defaultStore();
+    if (action === "connect") {
+      const email = await connectGmail(store, o.client ? { clientFile: o.client } : {});
+      console.log(`Connected ${email}, read-only. The tool reads one kind of message: the verification email a job board sends when one of your accounts is made or used.\nYou can delete the client file now. To withdraw access: npx jev gmail disconnect`);
+    } else if (action === "status") {
+      const g = loadGmail();
+      if (!g) return console.log("Gmail is not connected. To connect it: npx jev gmail connect --client <file>. docs/ACCOUNTS.md has the steps.");
+      console.log(`Connected: ${g.email}, read-only, since ${g.connectedAt.slice(0, 10)}. Token: ${store.get(GMAIL.refreshTokenItem) ? "in the Keychain" : "missing. Connect again: npx jev gmail connect"}`);
+    } else if (action === "disconnect") {
+      await disconnectGmail(store);
+      console.log("Gmail is disconnected: access was withdrawn at Google and the tokens are gone from the Keychain.");
+    } else {
+      console.log("The actions are: connect, status, disconnect");
+    }
+  });
 
 program
   .command("check <ids...>")

@@ -11,6 +11,7 @@ import { FORM, PATHS } from "../config.js";
 import type { FieldsDump, FillPlan } from "../forms/fields.js";
 import type { Resolution } from "../answers/memory.js";
 import type { ControlState } from "./session.js";
+import type { WaitingFor } from "../jobs/queue.js";
 
 export type Fill = { selector: string; kind: string; value: string };
 export type FieldReport = { label: string; required: boolean; action: string; shown: string; note: string | null };
@@ -25,6 +26,8 @@ export type FillReport = {
   url: string;
   state: "filled" | "blocked";
   reason: string | null;
+  /** Set when the form sits behind a sign-in the tool could not finish: what the job waits for. */
+  auth?: { status: "login_required" | "awaiting_user_action" | "awaiting_email_verification" | "queued"; waitingFor: WaitingFor | null };
   fields: FieldReport[];
   drafts: FillPlan["drafts"];
   reviews: FillPlan["reviews"];

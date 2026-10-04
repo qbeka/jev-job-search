@@ -7,7 +7,10 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { BROWSER, childEnv, DOCTOR, PATHS, ROOT, WRITER, writerBackend } from "./config.js";
+import { ACCOUNTS, BROWSER, childEnv, DOCTOR, GMAIL, PATHS, ROOT, WRITER, writerBackend } from "./config.js";
+import { loadAccounts } from "./accounts/config.js";
+import { defaultStore, passwordProblems, type SecretStore } from "./accounts/secrets.js";
+import { loadGmail } from "./mail/gmail.js";
 import { askWriter } from "./answers/resolve.js";
 import { JevClient } from "./jev/client.js";
 import { noul } from "./jev/questions.js";
@@ -95,6 +98,30 @@ export function checkQueue(): Check {
   return { name: "Job queue", ok: queued > 0 && fresh, optional: true, detail: `${queued} jobs queued, last refreshed ${ageHours < 1 ? "under an hour" : `${Math.round(ageHours)} hours`} ago`, fix };
 }
 
+/**
+ * Job-board accounts are optional. When the person set some up, this says whether what a sign-in
+ * needs is there: the password in the Keychain, and Gmail when they let the tool read verification mail.
+ */
+export function checkAccounts(store: SecretStore = defaultStore(), files: { accounts?: string; gmail?: string } = {}): Check {
+  const name = "Job-board accounts";
+  let file;
+  try {
+    file = loadAccounts(files.accounts);
+  } catch (err) {
+    return { name, ok: false, optional: true, detail: (err instanceof Error ? err.message : String(err)).slice(0, 200), fix: "Correct data/accounts.json, or set it up again with /accounts" };
+  }
+  const rule = file.providers.workday;
+  if (!rule && !file.accounts.length) return { name, ok: true, optional: true, detail: "not set up, so jobs on Workday are skipped (optional: /accounts)", fix: "" };
+  const password = store.get(ACCOUNTS.passwordItem);
+  if (!password) return { name, ok: false, optional: true, detail: "allowed, but no password is stored", fix: "Run `npx jev accounts password` in a terminal and type the one password your job-board accounts use" };
+  const problems = passwordProblems(password);
+  if (problems.length) return { name, ok: false, optional: true, detail: `the stored password will be refused: it needs ${problems.join(", ")}`, fix: "Run `npx jev accounts password` and choose another password" };
+  const wantsMail = !!rule?.emailVerification || file.accounts.some((a) => a.emailVerification);
+  const mail = loadGmail(files.gmail);
+  if (wantsMail && (!mail || !store.get(GMAIL.refreshTokenItem))) return { name, ok: false, optional: true, detail: "allowed, but Gmail is not connected, so a new account waits for you to click its verification link", fix: "Run `npx jev gmail connect --client <file>` (docs/ACCOUNTS.md has the steps), or click each verification link yourself" };
+  return { name, ok: true, optional: true, detail: `Workday: ${rule?.mode === "create_if_missing" ? `sign in or make an account, at most ${rule.maxNewAccountsPerDay} new a day` : "sign in to the accounts you listed"}, ${file.accounts.length} employer account(s)${wantsMail ? ", Gmail connected" : ""}`, fix: "" };
+}
+
 /** One tiny JEV call: proves the key is valid and has credit. */
 export async function checkKeyOnline(): Promise<Check> {
   const fix = "Check the key at https://openrouter.ai/keys and that the account has credit";
@@ -132,7 +159,7 @@ export async function runChecks(online: boolean): Promise<Check[]> {
   const { check: profileCheck, profile } = checkProfile();
   const claude = checkClaude();
   const key = checkKey();
-  const checks = [checkNode(), checkChrome(), claude, key, profileCheck, checkResume(profile), ...checkOwnWords(), checkQueue()];
+  const checks = [checkNode(), checkChrome(), claude, key, profileCheck, checkResume(profile), ...checkOwnWords(), checkQueue(), checkAccounts()];
   if (online) {
     if (key.ok) checks.push(await checkKeyOnline());
     if (claude.ok) checks.push(await checkClaudeOnline());

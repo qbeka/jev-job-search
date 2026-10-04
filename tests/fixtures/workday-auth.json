@@ -1,0 +1,17 @@
+{
+  "note": "What a Workday tenant's sign-up and sign-in pages hold, read on a live posting's apply page on 2026-10-03 with nothing typed. Control names are Workday's own data-automation-id values.",
+  "register": {
+    "url": "https://acme.wd1.myworkdayjobs.com/acme/job/Toronto-Ontario-Canada/Software-Engineer---Intern_R03193/apply/applyManually",
+    "present": { "email": true, "password": true, "passwordAgain": true, "terms": true, "signIn": false, "register": true, "toSignIn": true, "toRegister": false, "withEmail": false, "declineCookies": true, "code": false, "sendCode": false, "back": false, "headerSignIn": true, "application": true, "progress": true, "robot": false, "otherSignIn": false },
+    "text": "Create Account Welcome! Create a Candidate Home account and explore numerous opportunities at Acme! Password Requirements: A numeric character An alphabetic character An uppercase character A lowercase character A special character A minimum of 8 characters Email Address* Password* Verify New Password* Please create a Candidate Home account so you can check the status and receive messages regarding your application. Yes, I have read and consent to the terms and conditions Create Account Already have an account? Sign In Forgot your password? Enter website. This input is for robots only, do not enter if you're human.",
+    "errors": [],
+    "header": "Sign In"
+  },
+  "signIn": {
+    "url": "https://acme.wd1.myworkdayjobs.com/acme/job/Toronto-Ontario-Canada/Software-Engineer---Intern_R03193/apply/applyManually",
+    "present": { "email": true, "password": true, "passwordAgain": false, "terms": false, "signIn": true, "register": false, "toSignIn": false, "toRegister": true, "withEmail": false, "declineCookies": false, "code": false, "sendCode": false, "back": false, "headerSignIn": true, "application": true, "progress": true, "robot": false, "otherSignIn": false },
+    "text": "Sign In Email Address* Password* Sign In Don't have an account yet? Create Account Forgot your password?",
+    "errors": [],
+    "header": "Sign In"
+  }
+}

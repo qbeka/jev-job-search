@@ -17,7 +17,7 @@ export const script = (name: string) => readFileSync(path.join(PATHS.browserScri
 const SESSION = path.join(PATHS.runs, "browser-session.json");
 
 /** One open tab per job. `state` and `since` say why a tab is kept after a run: it waits for the person, or for a confirmation. */
-export type SessionTab = { targetId: string; url: string; state?: "filling" | "awaiting_user_action" | "submission_unknown"; since?: string };
+export type SessionTab = { targetId: string; url: string; state?: "filling" | "awaiting_user_action" | "awaiting_email_verification" | "submission_unknown"; since?: string };
 type Session = Record<string, SessionTab>;
 export type Point = { x: number; y: number; ok: boolean; href?: string };
 export type ControlState = "on" | "off" | "missing";

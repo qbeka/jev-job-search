@@ -139,7 +139,11 @@ records are: the `applications/` folder at the top of the project, where
 left for them with the reason and the link.
 
 Tell them two things the tool will not do, so they are not surprised: it
-does not sign in to any site, and it does not pass a "prove you are human"
-check. Jobs behind a sign-in go on the by-hand list. A form waiting for an
+does not sign in to any site unless they set that up, and it does not pass
+a "prove you are human" check. Jobs behind a sign-in go on the by-hand
+list. Then offer the one optional step: a large share of postings are on
+Workday, where every employer wants its own account, and `/accounts` lets
+the tool use accounts there. It is off until they turn it on. If they want
+it, run the `/accounts` skill; if not, move on. A form waiting for an
 emailed code stays open for them to type the code, and `npx jev resume`
 records it.

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { checkKey, checkNode, checkProfile, checkResume, formatChecks, isReadyToRun, nextStep, type Check } from "../src/doctor.js";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { MemoryStore } from "../src/accounts/secrets.js";
+import { checkAccounts, checkKey, checkNode, checkProfile, checkResume, formatChecks, isReadyToRun, nextStep, type Check } from "../src/doctor.js";
 
 const ok = (name: string): Check => ({ name, ok: true, detail: "fine", fix: "" });
 const bad = (name: string, fix: string, optional = false): Check => ({ name, ok: false, detail: "missing", fix, optional });
@@ -36,5 +40,23 @@ describe("doctor", () => {
     expect(isReadyToRun(checks)).toBe(true);
     expect(nextStep(checks)).toBe("run discover");
     expect(nextStep([ok("Node.js")])).toMatch(/Everything is in place/);
+  });
+  it("treats job-board accounts as optional, and says what a sign-in still lacks", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "jev-doctor-"));
+    const files = { accounts: path.join(dir, "accounts.json"), gmail: path.join(dir, "gmail.json") };
+    const store = new MemoryStore();
+    expect(checkAccounts(store, files)).toMatchObject({ ok: true, optional: true });
+    writeFileSync(files.accounts, JSON.stringify({ providers: { workday: { email: "candidate@example.com", mode: "create_if_missing", emailVerification: true, agreements: ["account_terms"] } } }));
+    expect(checkAccounts(store, files)).toMatchObject({ ok: false, optional: true, fix: expect.stringMatching(/accounts password/) });
+    store.values.set("accounts-password", "weakpass");
+    expect(checkAccounts(store, files).detail).toMatch(/will be refused/);
+    // Made up for the test.
+    store.values.set("accounts-password", "Fake-Pass-123!");
+    expect(checkAccounts(store, files)).toMatchObject({ ok: false, fix: expect.stringMatching(/gmail connect/) });
+    writeFileSync(files.gmail, JSON.stringify({ clientId: "1234567890-fake.apps.googleusercontent.com", email: "candidate@example.com", connectedAt: "2026-10-03T00:00:00Z" }));
+    store.values.set("gmail-refresh-token", "1//fake-refresh-token-0123456789");
+    const ready = checkAccounts(store, files);
+    expect(ready.ok).toBe(true);
+    expect(JSON.stringify(ready)).not.toMatch(/Fake-Pass|fake-refresh/);
   });
 });

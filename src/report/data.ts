@@ -39,7 +39,7 @@ export function buildReport(rows: Row[], today = new Date()): Report {
       applied: applied.length,
       appliedToday: applied.filter((r) => day(r.applied_on) === todayKey).length,
       unconfirmed: count((r) => r.status_key === "submission_unknown"),
-      waitingForYou: count((r) => r.status_key === "awaiting_user_action"),
+      waitingForYou: count((r) => r.status_key === "awaiting_user_action" || r.status_key === "awaiting_email_verification"),
       leftForYou: count((r) => LEFT_FOR_YOU.includes(r.status_key)),
       queued: count((r) => r.status_key === "queued"),
       skipped: count((r) => r.status_key === "skipped"),
@@ -53,7 +53,7 @@ export function buildReport(rows: Row[], today = new Date()): Report {
 }
 
 /** Statuses that put a job in front of the person: on the by-hand list, or open and waiting. */
-export const LEFT_FOR_YOU: readonly string[] = ["needs_review", "blocked", "login_required", "awaiting_user_action", "submission_unknown"];
+export const LEFT_FOR_YOU: readonly string[] = ["needs_review", "blocked", "login_required", "awaiting_user_action", "awaiting_email_verification", "submission_unknown"];
 
 /** A status change sent from the page. */
 export const StatusChange = z.object({

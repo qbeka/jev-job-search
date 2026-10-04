@@ -57,7 +57,7 @@ ${embedded}
   const LEFT = ${JSON.stringify(LEFT_FOR_YOU)};
   const TABS = [
     { key: "applied", label: "Applied", keep: (r) => r.status_key === "applied" },
-    { key: "waiting", label: "Waiting for you", keep: (r) => r.status_key === "awaiting_user_action" || r.status_key === "submission_unknown" },
+    { key: "waiting", label: "Waiting for you", keep: (r) => r.status_key === "awaiting_user_action" || r.status_key === "awaiting_email_verification" || r.status_key === "submission_unknown" },
     { key: "manual", label: "Left for you", keep: (r) => LEFT.includes(r.status_key) },
     { key: "takehome", label: "Take-home", keep: (r) => !!r.takehome_link },
     { key: "queued", label: "Queued", keep: (r) => r.status_key === "queued" },

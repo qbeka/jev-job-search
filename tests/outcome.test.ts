@@ -13,6 +13,14 @@ describe("what becomes of a job", () => {
     expect(outcomeOf(blockedReport(job, SIGN_IN_REASON), 8)).toEqual({ action: "login_required", reason: SIGN_IN_REASON, rememberSite: true });
     expect(outcomeOf(blockedReport(job, "no form found, page looks like: login_required"), 8)).toMatchObject({ action: "login_required", reason: SIGN_IN_REASON, rememberSite: true });
   });
+  it("waits for what a sign-in the tool started could not finish, and keeps the site", () => {
+    const stopped = (auth: NonNullable<FillReport["auth"]>, reason: string) => outcomeOf({ ...blockedReport(job, reason), auth }, 8);
+    expect(stopped({ status: "awaiting_user_action", waitingFor: "robot_check" }, "the sign-in page asks you to confirm you are not a robot")).toEqual({ action: "awaiting_user_action", reason: "the sign-in page asks you to confirm you are not a robot", rememberSite: false, waitingFor: "robot_check" });
+    expect(stopped({ status: "awaiting_email_verification", waitingFor: null }, "click the link yourself")).toMatchObject({ action: "awaiting_email_verification", rememberSite: false });
+    expect(stopped({ status: "login_required", waitingFor: "login" }, "no password is stored")).toMatchObject({ action: "login_required", reason: "no password is stored", rememberSite: false });
+    // The day's limit of new accounts: nothing is wrong, the job goes back to the queue with no reason on it.
+    expect(stopped({ status: "queued", waitingFor: null }, "today's limit of 3 new accounts is reached")).toEqual({ action: "queued", reason: null, rememberSite: false, waitingFor: null });
+  });
   it("is skipped, not left for the person, when the posting has closed", () => {
     expect(outcomeOf(blockedReport(job, "no form found, page looks like: closed"), 8)).toEqual({ action: "skipped", reason: "the posting has closed", rememberSite: false });
   });

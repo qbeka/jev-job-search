@@ -11,7 +11,48 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- **Accounts, for Workday.** The tool can apply on Workday, where every
+  employer keeps its own accounts. Everything is off until you allow it,
+  one thing at a time, with `/accounts` or `accounts add workday`: sign in
+  to accounts you have, make one where an employer has none (`--create`,
+  at most 3 new a day), tick the account terms box (`--terms`), read the
+  verification email (`--verify-email`). A marketing box is never ticked.
+- `accounts password`: your Mac asks you for the one password your
+  job-board accounts use and keeps it in the Keychain. It is never shown,
+  saved in a file, or sent to Claude or JEV.
+- `gmail connect | status | disconnect`: read-only Gmail through your own
+  Google client, for the one email an employer sends to prove your address
+  when an account is made. Never used for a human-check code.
+- `resume --submit`: after a sign-in you finished yourself (a robot check,
+  a phone code, a refused password), the form is filled and sent.
+- `apply <Workday link>`, and Workday postings read from Workday's own
+  posting data for rating.
+- `docs/ACCOUNTS.md`, the `/accounts` skill, and an accounts line in
+  `doctor`.
+
+### Changed
+- A Workday job is kept by `discover` once accounts are allowed, and
+  `apply` takes one job per new employer and no more new accounts than the
+  day allows. Without accounts, nothing changes.
+- A sign-in the tool cannot finish no longer closes the page: it stays
+  open, you get a notification, and the run moves on.
+- The in-page scripts find a control by Workday's own name for it, never
+  read a one-time-code box, and click through the sheet Workday lays over
+  its buttons.
+
+### For contributors
+- `src/accounts/`: `ensureSignedIn` is the only place a credential is
+  typed; an `Adapter` names a board's controls and reads its answers;
+  `AuthPage` is the seam the tests script. `src/mail/`: `gmail.ts`,
+  `verification.ts`.
+- `tests/authPage.browser.test.ts` drives the real sign-in through headless
+  Chrome against a mock board on the loopback address. It is skipped where
+  Chrome is not installed.
+- Not verified against a real account: the wording Workday uses after a
+  wrong password, a lockout or a duplicate sign-up, and Workday's
+  application pages behind the sign-in. Wording the adapter does not know
+  stops the job for the person.
 
 ## [1.3.0] - 2026-10-03
 

@@ -121,6 +121,7 @@ export class Page {
   /** The address of the page itself, kept current so a widget's own frame is not mistaken for the form. */
   private mainUrl = "";
   private closed = false;
+  private listeners = new Map<string, Set<(params: Record<string, unknown>) => void>>();
   private constructor(private ws: WebSocket, readonly targetId: string) {}
 
   static async attach(target: Target): Promise<Page> {
@@ -133,7 +134,10 @@ export class Page {
     ws.onmessage = (ev: MessageEvent) => {
       const m = JSON.parse(String(ev.data)) as { id?: number; result?: unknown; error?: { message: string }; method?: string; params?: Record<string, unknown> };
       if (m.id === undefined) {
-        if (m.method && m.params) page.onNetwork(m.method, m.params);
+        if (m.method && m.params) {
+          page.onNetwork(m.method, m.params);
+          for (const h of page.listeners.get(m.method) ?? []) h(m.params);
+        }
         return;
       }
       const p = page.pending.get(m.id);
@@ -190,6 +194,20 @@ export class Page {
       if (w.status === null) w.failed = true;
       this.inflight.delete(id);
     }
+  }
+
+  /** Hears one kind of browser event until the returned function is called. */
+  on(method: string, handler: (params: Record<string, unknown>) => void): () => void {
+    const set = this.listeners.get(method) ?? new Set();
+    set.add(handler);
+    this.listeners.set(method, set);
+    return () => void set.delete(handler);
+  }
+
+  /** The tab's own frame, as the browser knows it: its id and its address. A page cannot change what this says. */
+  async mainFrame(): Promise<{ id: string; url: string }> {
+    const t = await this.send<{ frameTree: { frame: { id: string; url: string } } }>("Page.getFrameTree");
+    return t.frameTree.frame;
   }
 
   /** Resolves once the page has no write of its own in flight, or after the limit. True when it went quiet. */

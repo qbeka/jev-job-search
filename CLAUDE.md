@@ -4,7 +4,7 @@ Read `README.md` first, then `docs/ARCHITECTURE.md`. The CLI is the product:
 `discover` builds the queue, `apply` fills, resolves, verifies and submits.
 `src/run/pipeline.ts` is the loop itself. The skills in `.claude/skills/`
 run it with a person in the loop: `/setup`, `/discover`, `/apply`,
-`/profile`.
+`/accounts`, `/profile`.
 
 If `data/profile.json` does not exist, the person in front of you has not
 set the tool up. Offer `/setup` before anything else. `npx jev
@@ -19,8 +19,8 @@ doctor` says what is in place and what to do next.
 - **No PII in git.** `data/profile.json`, `data/bank.json`,
   `data/voice.local.md`, the resume, `applications/all.csv`, `applications/applied.csv`,
   `applications/manual.csv`, `data/memory.json`, `data/knowledge.json`,
-  `data/queue.json` and everything under `data/cache/` and `data/runs/` are
-  git-ignored. `knowledge/sites.json` is tracked on purpose: it holds site
+  `data/queue.json`, `data/accounts.json`, `data/gmail.json` and everything
+  under `data/cache/` and `data/runs/` are git-ignored. `knowledge/sites.json` is tracked on purpose: it holds site
   names and kinds of controls, and `sanitize` keeps everything else out. Tests use `data/profile.example.json` only. Never paste real
   values into a fixture, a doc, source, or a commit message.
 - **Verify, then submit.** A value is real when it has been read back from
@@ -37,17 +37,39 @@ doctor` says what is in place and what to do next.
   letter (`src/documents/`) is used only when the run asked for it, and only
   after `unsupportedClaims` found nothing in it that the profile does not
   say. Never loosen that check to get a document through.
-- **Never sign in, never type into a login.** A page with a password box
-  is blocked: the tab is closed, the job goes on the by-hand list
-  (`applications/manual.csv`), and the site is noted so the next discover skips it. The
-  tool creates no accounts, stores no site passwords and solves no CAPTCHAs.
+- **Sign in only where the person set it up.** A password is typed by
+  `ensureSignedIn` (`src/accounts/auth.ts`) and nothing else: only into a
+  box an adapter names, only while the tab is on an origin the account
+  allows, only for an account in `data/accounts.json` or one the person's
+  standing rule lets the tool make. A wrong password is never retried and
+  never leads to a new account. Account terms are ticked only when the
+  person approved `account_terms`; a marketing box never. Every exit is
+  bounded (`ACCOUNTS` in `src/config.ts`), and what the sign-in cannot do
+  with certainty waits for the person. Any other page with a password box
+  is blocked as before: the job goes on the by-hand list and the site is
+  noted. The tool solves no CAPTCHAs.
+- **You never touch a credential.** When you work in this repo you never
+  ask for, read, type or repeat a password, a code or a token, never read
+  the Keychain, and never run a sign-in, a sign-up or `gmail connect`
+  against a real service, which includes `apply` on a Workday job. Those
+  are the person's to run. You build and test against the scripted pages
+  in `tests/helpers/` with made-up credentials.
+- **Secrets live in the Keychain and travel as `Secret`.** Passwords and
+  the Gmail tokens are in the macOS Keychain (`src/accounts/secrets.ts`),
+  never in a file, never in a command's arguments, never in a prompt to
+  Claude or JEV, a report, a plan, a trace or a record. Password boxes and
+  one-time-code boxes are never dumped.
 - **A human check is the person's to pass.** That includes a CAPTCHA and
   a code a board emails to confirm a person is applying. No such code is
   ever read from mail or typed into a form, by the tool or by you. The
   filled form stays open (`awaiting_user_action`), the person is told
   (`src/run/assist.ts`: a notification, the tab in front, their own mail
   opened at a search for the code), and the run moves on. `resume` records
-  the application once they finish.
+  the application once they finish. The email an employer sends to prove
+  the inbox of an account the person set up is a different thing:
+  `src/mail/verification.ts` may read that one email, with their consent.
+  It is never used for a human-check code, and an email's content goes to
+  its parser and nowhere else.
 - **Never send twice.** From the moment Submit is clicked the application
   may be with the employer. The job is recorded `submission_unknown` before
   the click and is never filled or sent again until a confirmation,

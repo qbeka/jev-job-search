@@ -297,6 +297,8 @@
       const p = center(el);
       const top = document.elementFromPoint(p.x, p.y);
       if (!top || el.contains(top) || top.contains(el)) return "";
+      // Workday lays a clickable sheet over its buttons: the sheet is the button, and a click on it is a click on the control.
+      if (top.getAttribute("data-automation-id") === "click_filter" && top.parentElement === el.parentElement) return "";
       let box = top;
       while (box.parentElement && box.parentElement !== document.body && text(box).length < 40) box = box.parentElement;
       return text(box).slice(0, 200) || top.tagName;

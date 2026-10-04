@@ -8,6 +8,7 @@ import { JEV } from "../config.js";
 import { fetchAshbyJob, ashbyJobId, ashbySlug } from "../sources/ats/ashby.js";
 import { fetchGreenhouseJob, greenhouseJobId, greenhouseSlug } from "../sources/ats/greenhouse.js";
 import { fetchLeverJob, leverJobId, leverSlug } from "../sources/ats/lever.js";
+import { fetchWorkdayJob } from "../sources/ats/workday.js";
 import { getText } from "../util/http.js";
 import { htmlToText, truncate } from "../util/text.js";
 import type { Job } from "./normalize.js";
@@ -40,6 +41,10 @@ export async function describe(job: Job): Promise<Job> {
         text = await fetchAshbyJob(slug, id, job.company);
         source = "api";
       }
+    }
+    if (!text && job.ats === "workday") {
+      text = await fetchWorkdayJob(job.url);
+      if (text) source = "api";
     }
     if (!text) {
       const html = await getText(job.url, { cacheMs: 6 * 60 * 60_000 });

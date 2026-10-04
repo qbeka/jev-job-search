@@ -260,9 +260,9 @@ const STATUS_WORDS: Record<QueueStatus, string> = {
   submission_unknown: "Unconfirmed",
 };
 /** Statuses that carry their reason in the status column itself. */
-const WITH_REASON: readonly QueueStatus[] = ["blocked", "failed", "skipped", "awaiting_user_action", "submission_unknown"];
+const WITH_REASON: readonly QueueStatus[] = ["blocked", "failed", "skipped", "awaiting_user_action", "awaiting_email_verification", "login_required", "submission_unknown"];
 /** Statuses that put a job on the by-hand list. */
-const MANUAL_STATUSES: readonly (QueueStatus | null)[] = ["needs_review", "blocked", "login_required", "awaiting_user_action", "submission_unknown"];
+const MANUAL_STATUSES: readonly (QueueStatus | null)[] = ["needs_review", "blocked", "login_required", "awaiting_user_action", "awaiting_email_verification", "submission_unknown"];
 
 export function statusLabel(e: Pick<QueueEntry, "status" | "statusReason">): string {
   const word = STATUS_WORDS[e.status];

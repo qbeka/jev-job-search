@@ -2,6 +2,7 @@
  * One Job shape for every source. Everything downstream (filters, rating,
  * the queue, the CSV) reads this and nothing else.
  */
+import { workday } from "../accounts/workday.js";
 import { createHash } from "node:crypto";
 
 export type Ats =
@@ -199,5 +200,7 @@ export function applyUrlFor(job: Pick<Job, "url" | "ats">): string {
     const m = /^(https:\/\/jobs\.ashbyhq\.com\/[^/]+\/[0-9a-f-]{36})/i.exec(job.url);
     return m ? `${m[1]}/application` : job.url;
   }
+  // Workday: straight to the application, past the choice between "autofill" and "apply manually".
+  if (job.ats === "workday" && workday.tenantOf(job.url)) return workday.applicationUrl(job.url);
   return job.url;
 }

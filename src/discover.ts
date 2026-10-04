@@ -8,6 +8,7 @@ import path from "node:path";
 import { DISCOVER, PATHS, CACHE } from "./config.js";
 import { JevClient } from "./jev/client.js";
 import { describe } from "./jobs/describe.js";
+import { capabilityFor } from "./accounts/capability.js";
 import { preFilter } from "./jobs/hardFilters.js";
 import { isWalled, learnedWalledHosts } from "./jobs/walled.js";
 import { dedupe, type Job } from "./jobs/normalize.js";
@@ -155,8 +156,10 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
   // against the queue as it is then: a search takes minutes, and a run may record outcomes meanwhile.
   const decided: Decided[] = [];
   const kept: Job[] = [];
+  // An account board counts when the person has an account there or allowed one, even if today's limit of new accounts is used up.
+  const withAccount = (url: string) => (capabilityFor(url)?.verdict ?? "no") !== "no";
   for (const job of all) {
-    const reason = preFilter(job, now, (url) => isWalled(url, learned), us, opts.maxAgeDays);
+    const reason = preFilter(job, now, (url) => isWalled(url, learned), us, opts.maxAgeDays, withAccount);
     if (reason) decided.push({ job, fit: null, reason });
     else kept.push(job);
   }

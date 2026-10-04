@@ -80,3 +80,26 @@ describe("ATS url helpers and board discovery", () => {
     expect(boards.some((b) => b.ats === "ashby" && /Superhuman/.test(b.slug))).toBe(true);
   });
 });
+
+describe("Workday postings", () => {
+  it("reads the parts of a posting link, with or without a locale and an apply step", async () => {
+    const { workdayParts } = await import("../src/sources/ats/workday.js");
+    expect(workdayParts("https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Toronto/Software-Intern_R1")).toEqual({ origin: "https://acme.wd5.myworkdayjobs.com", tenant: "acme", site: "Careers", path: "Toronto/Software-Intern_R1" });
+    expect(workdayParts("https://acme.wd5.myworkdayjobs.com/Careers/job/Toronto/Software-Intern_R1/apply/applyManually")?.path).toBe("Toronto/Software-Intern_R1");
+    expect(workdayParts("https://acme.wd5.myworkdayjobs.com/Careers")).toBeNull();
+    expect(workdayParts("https://boards.greenhouse.io/acme/jobs/1")).toBeNull();
+  });
+
+  it("turns Workday's own posting data into a job", async () => {
+    const { workdayJob } = await import("../src/sources/ats/workday.js");
+    const raw = JSON.parse(readFileSync(new URL("./fixtures/workday-posting.json", import.meta.url), "utf8")) as { jobPostingInfo: Record<string, unknown> };
+    const link = "https://altera.wd1.myworkdayjobs.com/altera/job/Toronto-Ontario-Canada/Software-Engineer---Intern_R03193";
+    const job = workdayJob(raw, `${link}/apply/applyManually`);
+    expect(job).toMatchObject({ title: "Software Engineer - Intern", company: "Altera Semiconductor Technology Canada ULC", ats: "workday", url: link, locations: ["Toronto, Ontario, Canada"], source: "workday:altera", descriptionSource: "api" });
+    expect(job?.postedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(job?.description).not.toMatch(/<\/?[a-z]/i);
+    // A posting that takes no applications is not a job to queue.
+    expect(workdayJob({ ...raw, jobPostingInfo: { ...raw.jobPostingInfo, canApply: "False" } }, link)).toBeNull();
+    expect(workdayJob({ nothing: true }, link)).toBeNull();
+  });
+});

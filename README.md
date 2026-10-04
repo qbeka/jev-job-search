@@ -35,7 +35,7 @@ ready              fit scores             Send only what is ready
                    -> /apply            manual.csv for what is yours
 ```
 
-The tool never lies on a form, never signs in anywhere, never passes a human check for you, and never sends a form it could not verify. What it cannot finish truthfully, it lists for you with the reason.
+The tool never lies on a form, signs in only with an account you set up for it, never passes a human check for you, and never sends a form it could not verify. What it cannot finish truthfully, it lists for you with the reason.
 
 ## Prerequisites
 
@@ -89,18 +89,19 @@ Fills the best queued forms, one Chrome tab each, answers what JEV left open wit
 /apply https://jobs.ashbyhq.com/company/job-id
 ```
 
-A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like any other. For another board, `/discover` picks it up when it appears on the public lists.
+A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like any other. So is a Workday link, once you have run `/accounts`. For another board, `/discover` picks it up when it appears on the public lists.
 
 ## Other commands
 
-`/setup`, `/discover` and `/apply` are the workflow. Six more skills and a handful of terminal commands extend it once your profile is in place:
+`/setup`, `/discover` and `/apply` are the workflow. Seven more skills and a handful of terminal commands extend it once your profile is in place:
 
 - **`/tailor <job id> [--cover]`** writes a one-page resume for the job from your profile and the posting, and with `--cover` a one-page cover letter, and shows you the PDFs. Every number and every name of a tool, a place or a company in the draft is checked against your profile in code; the keywords the posting wants and your profile cannot support are listed, never stuffed in. `/apply --tailor --cover` writes and attaches them as it applies. See [A resume and a cover letter written for the job](#a-resume-and-a-cover-letter-written-for-the-job).
 - **`/report`** opens a dashboard on your own machine: applications sent, today, waiting for you, left for you; sent per day and per board; every job with its status, which you can change by hand, and a notes box per row. `npx jev report --static applications/report.html` writes a snapshot page to keep. Nothing leaves your machine.
 - **`/expand`** reads the public places your profile already links to (your GitHub repositories, your portfolio site) and proposes projects, skills and facts that are missing from the profile, each with its source. Nothing is added without your yes.
 - **`/add-source`** adds a job board or a public list as a source: it inspects the site, writes the source in the shape of the shipped ones, tests it on a captured sample and runs one live query before registering it.
+- **`/accounts`** lets the tool apply on Workday, where every employer wants its own account. You say what it may do, one thing at a time: sign in to accounts you have, make one where there is none, tick the account terms, read the verification email. Your password goes into your Mac's Keychain, typed by you. Off until you turn it on. See [Jobs that want an account](#jobs-that-want-an-account).
 - **`/profile`** changes your profile, your standing answers (how recurring questions are answered), your drafts and your voice guide with you. When a form answer looked wrong, this is where you fix it, once.
-- **`resume`** watches the forms left open for you (an emailed code, a robot check) while you finish them, and records each application when its confirmation shows. **`reconcile`** settles a form whose Submit was clicked with no confirmation seen: it reads the tab again and records it as applied or as not sent. Such a form is never sent twice.
+- **`resume`** watches the forms left open for you (an emailed code, a robot check, a sign-in) while you finish them, and records each application when its confirmation shows. **`reconcile`** settles a form whose Submit was clicked with no confirmation seen: it reads the tab again and records it as applied or as not sent. Such a form is never sent twice.
 - **`log`**, **`status`** and **`cost`** show your applications (`log --manual` lists what the tool left for you), the totals and skip reasons, and what you have spent. `npx jev log --open` opens your applications in your spreadsheet program.
 - **`doctor`** checks everything a run needs and names the next step. `/setup` runs it for you.
 - **`knowledge --share`** copies what your runs learned about job sites into the repo, so a pull request can hand it to everyone. It holds site names and kinds of controls, nothing about you.
@@ -120,6 +121,7 @@ jev-job-search/
 │   ├── report/                # /report: the dashboard
 │   ├── expand/                # /expand: enrich the profile from your public links
 │   ├── add-source/            # /add-source: a new job board or list
+│   ├── accounts/              # /accounts: boards that want an account (Workday)
 │   └── profile/               # /profile: change what the tool knows about you
 ├── applications/              # Your records (git-ignored)
 │   ├── applied.csv            #   what was sent, newest first
@@ -131,6 +133,7 @@ jev-job-search/
 │   ├── transcript.pdf         #   for forms that ask for one
 │   └── tailored/              #   <Company>_<Role>_<id>/ resume.pdf, cover.pdf, resume.md
 ├── data/                      # Your profile and the tool's working files (git-ignored, examples tracked)
+│   ├── accounts.json          #   the job-board accounts you allowed (no password in it)
 │   ├── profile.json           #   who you are; standing answers to recurring questions
 │   ├── bank.json              #   your starting drafts for common open questions
 │   ├── voice.local.md         #   how you write
@@ -168,7 +171,7 @@ Each job goes through the same loop on its own, and its result is printed the mo
 
 - **Decisions and sentences are split.** JEV, a model built for typed judgements, makes every fixed-answer choice and returns probabilities, not text, in about half a second for a fraction of a cent. Claude writes only the sentences. A form with no open question never calls Claude at all.
 - **Nothing is trusted until it is read back.** Every value is read from the page after it is written. A wrong dropdown pick, a date a masked box mangled, or a value a site quietly dropped is caught before Submit, not after.
-- **It never lies, signs or sneaks.** Work authorization, dates and education come from your profile and are never bent to fit a posting. A signature, an NDA, a human check or a sign-in is yours; the tool stops and tells you.
+- **It never lies, signs or sneaks.** Work authorization, dates and education come from your profile and are never bent to fit a posting. A signature, an NDA and a human check are yours; the tool stops and tells you. It signs in only with an account you set up for it.
 - **It learns per site.** How each board's controls take values, which sites want a sign-in, which email codes, is recorded after every form and read before the next, and shared through the repo.
 - **Every record is a plain CSV** with fixed column names, at the top of the project, so you and your scripts can read it.
 
@@ -223,7 +226,23 @@ Everything about you is in data files, not in the code. `/profile` changes any o
 
 ### Where the jobs come from, and adding a board
 
-Jobs come from public lists on GitHub (the SimplifyJobs internship and new-grad lists among them) and from the company boards those lists point at, read through the boards' own APIs for Greenhouse, Lever and Ashby. Workday, iCIMS, Taleo, Oracle and the other boards that want an account are filtered out; a site found behind a sign-in during a run is remembered and skipped. [docs/SOURCES.md](docs/SOURCES.md) describes each source and how to add one, and `data/imports/` takes a CSV of your own.
+Jobs come from public lists on GitHub (the SimplifyJobs internship and new-grad lists among them) and from the company boards those lists point at, read through the boards' own APIs for Greenhouse, Lever and Ashby. Workday postings are read from Workday's own posting data and are kept once you allow accounts with `/accounts`; until then they are filtered out. iCIMS, Taleo, Oracle and the other boards that want an account are filtered out, and a site found behind a sign-in during a run is remembered and skipped. [docs/SOURCES.md](docs/SOURCES.md) describes each source and how to add one, and `data/imports/` takes a CSV of your own.
+
+### Jobs that want an account
+
+Every employer on Workday keeps its own accounts, and that is a large share of all postings. `/accounts` turns this on, and each part is a separate yes:
+
+```bash
+npx jev accounts add workday --create --terms --verify-email
+```
+
+```bash
+npx jev accounts password
+```
+
+The first says the tool may sign in on Workday, make an account where an employer has none for you (at most 3 new a day), tick the account terms box, and read the verification email. Leave a flag out and that part stays yours. The second has your Mac ask you for the one password your job-board accounts use; it goes into the Keychain and is never shown, saved in a file, or sent to Claude or JEV.
+
+A wrong password is never tried twice. A robot check, a phone code, a passkey and single sign-on stop the job with the page left open for you; `npx jev resume --submit` carries on once you are through. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
 
 ### Which jobs it keeps
 
@@ -264,11 +283,16 @@ npx jev templates --use mine
   agree to a contract, the tool leaves it for you.
 - **It will not choose a date for you.** If a form asks you to pick an
   interview or test slot, the tool leaves it for you.
-- **It will not sign in anywhere, and it will not create accounts.** A job
-  behind a sign-in goes on your by-hand list.
+- **It will not sign in or create an account unless you set that up.**
+  Without `/accounts`, a job behind a sign-in goes on your by-hand list.
+  With it, the tool signs in on Workday only, never retries a wrong
+  password, and never ticks a marketing box.
 - **It will not pass a "prove you are human" test for you.** That covers
-  picture puzzles and the codes a board emails you.
-- **It will not read your email.**
+  picture puzzles and the codes a board emails you because it suspects a
+  robot.
+- **It will not read your email**, with one exception you can turn on: the
+  email an employer sends to prove your address when an account is made.
+  Access is read-only, and that one email is all it looks for.
 - **It will not write a cover letter or give references.** It skips jobs
   that require them.
 - **It will not give your GPA** unless the form cannot be sent without it,

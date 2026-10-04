@@ -70,6 +70,8 @@ Timing on 2026-10-02: 4,748 unique postings, 478 rated, 61 seconds, $0.075.
 | `src/forms/mapForm.ts` | Asking JEV what goes in each field |
 | `src/answers/` | The writer (headless Claude Code, or the Claude API on a key), the answer memory, drafts and voice |
 | `src/documents/` | Tailored resumes and cover letters: the writer's draft, the truth gate (`unsupportedClaims`), HTML rendered to PDF through Chrome (`printPdf`) |
+| `src/accounts/` | Boards that want an account: what the person allowed (`config.ts`), the Keychain (`secrets.ts`), the sign-in itself (`auth.ts`), one adapter per board (`workday.ts`), whether a job may be taken (`capability.ts`) |
+| `src/mail/` | Gmail, read-only (`gmail.ts`), and finding the one verification email an account asked for (`verification.ts`) |
 | `src/knowledge/sites.ts` | What the tool has learned about each site |
 | `src/log/` | The record files and the cost summary |
 | `src/util/` | Pacing, the JEV answer cache, dates, text, HTTP |
@@ -90,7 +92,8 @@ happens.
 ```
 fillJob (page 1)
   openForm ─→ the form URL, or its embedded ATS frame, or behind an Apply link or button
-     │         password box → blocked, nothing typed, the site is noted as wanting a sign-in
+     │         a board with an adapter (Workday) → signInFor: sign in, or sign up where allowed, then the form
+     │         any other password box → blocked, nothing typed, the site is noted as wanting a sign-in
      │         error page → one unhurried retry
   fillPage ─→ dumpFields.js ─→ readDropdownOptions ─→ mapForm (JEV, cached) ─→ uploads ─→ applyFills
      │                                                  read back, retry what did not stick
@@ -228,9 +231,10 @@ and `resume` records the application when they finish.
 | `in_progress` | A run is working on it | `takeJobs` |
 | `applied` | A confirmation page was read | `submitAndRecord`, `resume`, `reconcile`, `check`, the person |
 | `needs_review`, `blocked`, `failed` | Set aside with a reason | `settle` |
-| `login_required` | The board wants a sign-in the tool has no account for | `settle` |
-| `registering`, `awaiting_email_verification`, `authenticated` | Stops on the way through a board with an account | the account adapter |
-| `awaiting_user_action` | The filled form is open and waits for the person | `submitAndRecord`, the account adapter |
+| `login_required` | The board wants a sign-in the tool has no account for, or no password is stored | `settle`, from the sign-in's result |
+| `awaiting_email_verification` | The board mailed a link to prove the address, and the tool could not use it or may not read mail. The page stays open | `settle`, from the sign-in's result |
+| `awaiting_user_action` | A page is open and waits for the person: a filled form at a human check, or a sign-in only they can finish. `waitingFor` says which | `submitAndRecord`, `settle` |
+| `registering`, `authenticated` | Reserved for a run to hold while it signs up or has signed in. Not set today: a sign-in is one step inside the fill | |
 | `submission_unknown` | Submit was clicked and no confirmation was seen | `submitAndRecord`, before the click |
 
 A job a run owned (`RUN_OWNED`) with no run alive was interrupted: `sweep`
@@ -246,6 +250,63 @@ around a read-modify-write; `mutateQueue`, `mutateRows` and
 `mutateSession` are the only ways the records change. `acquireRun` is the
 lock a browser run holds for its whole length; a second run is refused,
 and the dashboard shows which run holds it.
+
+## Accounts (`src/accounts/`) and verification mail (`src/mail/`)
+
+A board that wants an account is handled by an **adapter**. It names every
+control it touches by the board's own stable names, says what a page is
+(`view`), and reads what the board said after a click (`afterSignIn`,
+`afterRegister`). `workday.ts` is the only one. Its control names were read
+on Workday's live sign-up and sign-in pages with nothing typed; the two
+snapshots are `tests/fixtures/workday-auth.json`.
+
+`ensureSignedIn` (`auth.ts`) is the one place a credential is typed. It is
+one pass with every exit bounded:
+
+```
+read the page ─→ adapter.view
+  signed_in     the address shown must be the account's, else stop
+  sign_in       known account: type, click once, read the answer
+                  wrong password, locked → pause the account, stop
+                unknown account: go to the sign-up when the person allowed it
+  register      under the day's limit, terms approved: type, tick, write the account down, click once
+                  "already exists" → sign in, once
+  verify_email  the Verifier finds the one email → follow its link under a guard → sign in
+  challenge, elsewhere, unknown → stop
+```
+
+A stop is a status and a reason (`AuthStop`), carried on the fill report as
+`auth` and recorded by `settle`: the tab is kept, `assist` tells the
+person, and `resume` picks the job up once the tab shows the application.
+
+What keeps it safe:
+
+- `enter` types only when the tab's own address, as the browser reports it
+  (`Page.mainFrame`), is an origin the account allows, and only into a box
+  of the right kind: a password into a password box, an address into a box
+  that is not one. It reads back the length of what it typed.
+- The page is seen through `AuthPage` (`provider.ts`). The real one
+  (`authPage.ts`) runs fixed functions with the adapter's selectors as
+  arguments, and a password box only ever reports its length. Tests script
+  one (`tests/helpers/fakeWorkday.ts`) and log every keystroke with the
+  origin it went to.
+- `follow` opens a verification link with every load of the tab's page
+  held, through the browser's `Fetch` domain, to the allowed origins. A
+  redirect elsewhere fails at the redirect and never reaches the other site.
+- Passwords and tokens come from a `SecretStore` (`secrets.ts`) as a
+  `Secret`: the macOS Keychain through `/usr/bin/security`, a value going
+  in on standard input and never as an argument.
+- `capabilityFor` decides before any page is opened: `can`, `wait` (the
+  day's limit, a paused account) or `no`. `accountGate` gives `takeJobs`
+  one job per new employer and no more new accounts than the day allows.
+
+`mailVerifier` (`src/mail/verification.ts`) polls the mailbox on a fixed
+schedule for the one email that fits a request (`whyNot`): the board's
+sender, verified by the mail server, to the account's address, newer than
+the request, not used before. Exactly one must fit, and its link must pass
+`usable`. Used message ids are kept in `data/runs/verifications.json`.
+Requests for one account take turns. This module is never called for a
+human-check code.
 
 ## What the tool learns
 
@@ -358,6 +419,10 @@ part of correctness.
 | `data/runs/writer-usage.jsonl` | one JSON object per Claude call: purpose, job, tokens, cost | the writer | `cost` |
 | `data/runs/<id>.plan.json`, `<id>.report.json` | the dump and plan of the current page, and the verified result | the apply loop | `resolve`, `inspect`, `submit`, `survey` |
 | `data/runs/browser-session.json` | which tab holds which job | `fill` | every later step |
+| `data/accounts.json` | `AccountsFile` v1: what the person allowed, one entry per employer account. No secret | `accounts`, the sign-in | the sign-in, `capabilityFor`, discover |
+| `data/runs/accounts-state.json` | last sign-in, tries today, pauses, accounts made per day | the sign-in | the sign-in, `capabilityFor` |
+| `data/gmail.json` | the connected address and the OAuth client id. The tokens are in the Keychain | `gmail connect` | the verifier |
+| `data/runs/verifications.json` | ids of verification emails already used | the verifier | the verifier |
 | `data/runs/chrome-profile/` | the runner's Chrome profile | Chrome | Chrome |
 
 ## Setup and `doctor` (`src/doctor.ts`)
@@ -378,6 +443,6 @@ passed through the model on its way to the page. The runner talks to Chrome
 directly, so a form is one command and the model only sees what JEV could
 not settle. It needs no Playwright or Puppeteer: the DevTools Protocol is a
 WebSocket and a dozen methods. The price is a separate browser profile with
-no signed-in sessions, which is fine for the forms this tool targets (they
-need no account) and is why a human check still goes to the person at the
-keyboard.
+none of the person's everyday sessions. Most forms this tool targets need
+no account; where one does, the sign-in happens in that profile and stays
+there. A human check still goes to the person at the keyboard.

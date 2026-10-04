@@ -5,7 +5,7 @@
  * are not worked around. The job is set aside for them with the reason.
  */
 import { SIGN_IN_REASON, type FillReport } from "../browser/report.js";
-import type { QueueEntry } from "../jobs/queue.js";
+import type { QueueEntry, WaitingFor } from "../jobs/queue.js";
 
 export type Outcome = {
   /** send: the form is ready. Anything else is the status the job is recorded with. */
@@ -13,6 +13,8 @@ export type Outcome = {
   reason: string | null;
   /** The job's site put a sign-in in front of the form: the next discover skips that site. */
   rememberSite: boolean;
+  /** What the person is asked to do, when the job waits on them. */
+  waitingFor?: WaitingFor | null;
 };
 
 /** One line that says why a filled form is not ready, for the record. */
@@ -32,6 +34,8 @@ export function outcomeOf(r: FillReport, maxPages: number): Outcome {
   if (r.sent) return { action: "applied", reason: null, rememberSite: false };
   if (r.state === "blocked") {
     const reason = r.reason ?? "no form found";
+    // A sign-in on a board the tool knows: the job waits for what the sign-in said, and the site is not written off.
+    if (r.auth) return { action: r.auth.status, reason: r.auth.status === "queued" ? null : reason, rememberSite: false, waitingFor: r.auth.waitingFor };
     if (reason === SIGN_IN_REASON || /login_required/.test(reason)) return { action: "login_required", reason: SIGN_IN_REASON, rememberSite: true };
     // A posting that has closed is not something the person can do by hand either.
     if (/page looks like: closed/.test(reason)) return { action: "skipped", reason: "the posting has closed", rememberSite: false };

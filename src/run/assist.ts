@@ -16,6 +16,7 @@ const WORDS: Record<WaitingFor, string> = {
   phone: "finish the phone verification",
   passkey: "sign in with your passkey",
   sso: "sign in with your single sign-on",
+  email_link: "click the link the board emailed you to prove the address is yours",
   unknown: "finish what the page asks for",
 };
 
@@ -23,7 +24,8 @@ export const waitingWords = (w: WaitingFor) => WORDS[w];
 
 /** The mail search that finds a board's code email: the board's name and "code", from the last hour. No address, nothing personal. */
 export function mailSearchUrl(host: string): string {
-  const board = host.split(".").slice(-2, -1)[0] ?? host;
+  // Workday mails from its own domain, whatever the employer's address is.
+  const board = /myworkday/.test(host) ? "workday" : (host.split(".").slice(-2, -1)[0] ?? host);
   const q = `${board} (code OR verification OR security) newer_than:1h`;
   return `${ASSIST.mailSearchBase}${encodeURIComponent(q)}`;
 }
@@ -45,7 +47,7 @@ export function notify(title: string, body: string): void {
 /** Tells the person a form waits on them and, for an emailed code, opens their mail at the search for it. */
 export function assist(job: { company: string; title: string }, waitingFor: WaitingFor, pageUrl: string): void {
   notify("jev-job-search needs you", `${job.company}: ${WORDS[waitingFor]}`);
-  if (waitingFor === "human_code" && ASSIST.openMail && process.platform === "darwin") {
+  if ((waitingFor === "human_code" || waitingFor === "email_link") && ASSIST.openMail && process.platform === "darwin") {
     let host = "";
     try {
       host = new URL(pageUrl).hostname;

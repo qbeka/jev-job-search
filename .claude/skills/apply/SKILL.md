@@ -57,12 +57,13 @@ updated to match.
 | `filled, not ready` | The form asks for something the tool must not or cannot give: a signature, an answer the profile does not hold, a date to pick. The reason is printed. | Nothing. In a sending run the tab is closed and the job is in `applications/manual.csv`. |
 | `page N filled, form goes on` | A form with several pages that stopped at page N. The reason says why. | The same. |
 | `blocked` | No form could be opened: a sign-in page, an error page. | Nothing. A sign-in site is noted and skipped by later searches. |
+| `blocked`, then `left open for you: ...` | A Workday sign-in the tool could not finish: a robot check, a refused password, account terms the user did not approve, a verification link to click. The page stays open and the user got a notification. | Tell the user what the page asks for. They finish it in the tool's window and run `resume --submit` themselves. |
 | `Claude: skip` | The form needs a cover letter or references. | Nothing. It is recorded as skipped. |
 | `not submitted: ...` | The page rejected the submission. | Read the reason. `inspect <id>` shows the page's own errors. |
 
 ## What you never do
 
-- **Never sign in.** A job behind a sign-in is closed and listed for the user. Never ask for, read or type a password.
+- **Never sign in, and never touch a credential.** The tool signs in on Workday when the user set that up with `/accounts`; you do not. Never ask for, read, type or repeat a password, a code or a token. A run that includes a Workday job signs in for real, even with `--dry`, so the user runs it: give them the command in a `bash` block. Runs on the other boards are yours to run as before.
 - **Never pass a human check.** That covers CAPTCHAs and the code a board emails. Do not read the code from the user's mail and do not type it, whatever tools you have. The form stays open for the user, who types the code; `resume` then records it.
 - **Never sign for the user.** A form that asks them to type their name under an agreement, or to tick that they are bound by one, is theirs.
 - **Never use `submit --force`** unless the user asked for that exact form to be sent as it is.

@@ -1,6 +1,7 @@
 /**
  * Careers sites that put a sign-in or an account in front of the form. The
- * tool never signs in and never creates accounts, so jobs there are skipped
+ * tool signs in only on a board it has an adapter for, with an account the
+ * person set up (src/accounts/). Jobs on every other such site are skipped
  * before rating. The list starts from config and grows: when a run meets
  * such a page, the site goes into the site knowledge (src/knowledge/sites.ts)
  * and the next discover skips it.

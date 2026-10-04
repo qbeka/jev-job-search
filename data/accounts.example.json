@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "providers": {
+    "workday": {
+      "email": "you@example.com",
+      "mode": "create_if_missing",
+      "emailVerification": true,
+      "agreements": ["account_terms"],
+      "maxNewAccountsPerDay": 3,
+      "secret": { "keychain": "accounts-password" }
+    }
+  },
+  "accounts": [
+    {
+      "id": "workday:acme",
+      "provider": "workday",
+      "tenant": "acme",
+      "allowedOrigins": ["https://acme.wd5.myworkdayjobs.com"],
+      "email": "you@example.com",
+      "secret": { "keychain": "accounts-password" },
+      "mode": "existing_only",
+      "emailVerification": false,
+      "agreements": [],
+      "createdAt": null
+    }
+  ]
+}

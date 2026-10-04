@@ -42,6 +42,15 @@ export const PATHS = {
   /** Applications sent to a company that also wants a take-home assignment: the link and the instructions, for the person to do. */
   takehome: path.join(ROOT, "applications", "takehome.csv"),
   runs: path.join(ROOT, "data", "runs"),
+  /** The job-board accounts the person allowed, and the rule for making new ones. No secret is in it. */
+  accounts: path.join(ROOT, "data", "accounts.json"),
+  accountsExample: path.join(ROOT, "data", "accounts.example.json"),
+  /** What the tool remembers about each account between runs: when it last signed in, attempts, a pause after a lockout. */
+  accountsState: path.join(ROOT, "data", "runs", "accounts-state.json"),
+  /** The Gmail connection: the OAuth client id and the address. The tokens are in the Keychain. */
+  gmail: path.join(ROOT, "data", "gmail.json"),
+  /** Verification emails already used, so one message never answers two requests. */
+  verifications: path.join(ROOT, "data", "runs", "verifications.json"),
   /** Short locks around read-modify-write of the records, and the lock a browser run holds. */
   locks: path.join(ROOT, "data", "runs", "locks"),
   runLock: path.join(ROOT, "data", "runs", "run.lock"),
@@ -294,6 +303,56 @@ export const DOCUMENTS = {
   maxLetterWords: 260,
   /** Words that may be capitalized in a sentence without being a claim about the candidate. */
   plainWords: ["I", "A", "An", "The", "My", "In", "At", "On", "For", "With", "And", "As", "To", "Of", "This", "That", "It", "We", "You", "Your", "Our", "If", "When", "While", "After", "Before", "Over", "Since", "Through", "Then", "There", "Here", "What", "Which", "Who", "How", "Why", "Yes", "No", "Dear", "Hi", "Hello", "Sincerely", "Best", "Regards", "Thank", "Thanks", "Team", "Hiring", "Manager", "Regarding", "Re"],
+} as const;
+
+/** Signing in to job boards the person has an account on, and making an account where they allowed it (`src/accounts/`). */
+export const ACCOUNTS = {
+  /** The name every secret is kept under in the Keychain. */
+  keychainService: "jev-job-search",
+  /** The one password used for employer accounts, set with `jev accounts password`. */
+  passwordItem: "accounts-password",
+  /** Sign-in tries per account per day. A wrong password is never retried; this bounds everything else (a sign-in before and after an email verification is two). */
+  maxLoginAttempts: 3,
+  /** How many times the tool asks a board to send its verification email again. */
+  maxResends: 1,
+  /** Steps one sign-in may take before it is handed to the person. */
+  maxSteps: 16,
+  /** After a board says the account is locked, the account is left alone this long. */
+  lockoutPauseHours: 24,
+  /** New employer accounts per day when the person set no number of their own. */
+  maxNewAccountsPerDay: 3,
+  /** The pause after a click on a sign-in page before the page is read again. */
+  stepMs: 2_500,
+  /** Reads after a click on Sign In or Create Account, while the page has neither moved nor said anything. */
+  settleReads: 6,
+  /** Extra time a form on an account board gets, for the sign-in and the verification email, on top of RUN.fillTimeoutMs. */
+  signInBudgetMs: 240_000,
+  /** Reads of a page the sign-in does not know before it is handed to the person: a page still drawing itself gets this many. */
+  unknownReads: 4,
+  /** What a password must have for the boards the tool supports (Workday's rules). */
+  passwordRules: { minLength: 8, digit: true, lower: true, upper: true, special: true },
+} as const;
+
+/** Reading the person's Gmail, with their consent, for the email a board sends to prove an inbox is theirs (`src/mail/`). */
+export const GMAIL = {
+  scope: "https://www.googleapis.com/auth/gmail.readonly",
+  authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenUrl: "https://oauth2.googleapis.com/token",
+  revokeUrl: "https://oauth2.googleapis.com/revoke",
+  apiUrl: "https://gmail.googleapis.com/gmail/v1/users/me",
+  clientSecretItem: "gmail-client-secret",
+  refreshTokenItem: "gmail-refresh-token",
+  /** How long `gmail connect` waits for the person to finish Google's consent page. */
+  consentWaitMs: 5 * 60_000,
+  /** The waits between looks for a verification email. The total is how long a board gets to send it. */
+  pollMs: [5_000, 8_000, 12_000, 15_000, 20_000, 30_000, 30_000],
+  /** A verification email older than the request by more than this is not the one asked for. */
+  clockSkewMs: 60_000,
+  /** A verification request is given up after this long. */
+  requestTtlMs: 15 * 60_000,
+  /** Messages looked at per poll. More than one fresh match is ambiguous and is refused. */
+  maxResults: 5,
+  timeoutMs: 20_000,
 } as const;
 
 /** Help for the person when a form waits on them (`src/run/assist.ts`). */

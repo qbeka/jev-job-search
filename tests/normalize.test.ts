@@ -105,6 +105,9 @@ describe("applyUrlFor", () => {
     expect(applyUrlFor({ ats: "greenhouse", url: "https://job-boards.greenhouse.io/pinterest/jobs/8138049" })).toBe("https://job-boards.greenhouse.io/embed/job_app?for=pinterest&token=8138049");
     expect(applyUrlFor({ ats: "greenhouse", url: "https://job-boards.eu.greenhouse.io/acme/jobs/4978937101" })).toBe("https://job-boards.eu.greenhouse.io/embed/job_app?for=acme&token=4978937101");
     expect(applyUrlFor({ ats: "greenhouse", url: "https://stripe.com/jobs/search?gh_jid=8157838" })).toBe("https://stripe.com/jobs/search?gh_jid=8157838");
+    // Workday: straight to the application. A careers page that only runs on Workday behind its own address is left as it is.
+    expect(applyUrlFor({ ats: "workday", url: "https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Toronto/Intern_R1" })).toBe("https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Toronto/Intern_R1/apply/applyManually");
+    expect(applyUrlFor({ ats: "workday", url: "https://careers.acme.com/job/1" })).toBe("https://careers.acme.com/job/1");
     expect(applyUrlFor({ ats: "lever", url: "https://jobs.lever.co/matchgroup/69396299-e587-4063-aef6-0ce2fd66e9ee" })).toBe("https://jobs.lever.co/matchgroup/69396299-e587-4063-aef6-0ce2fd66e9ee/apply");
     expect(applyUrlFor({ ats: "ashby", url: "https://jobs.ashbyhq.com/cohere/8c035d3d-081d-4c8a-914a-72f4efaad254" })).toBe("https://jobs.ashbyhq.com/cohere/8c035d3d-081d-4c8a-914a-72f4efaad254/application");
     expect(applyUrlFor({ ats: "other", url: "https://x/y" })).toBe("https://x/y");

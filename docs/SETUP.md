@@ -144,7 +144,7 @@ again. Changing your profile, drafts or voice guide makes it start over.
 
 ## 9. What the tool leaves for you
 
-- A job on a site that wants a sign-in, a form that asks for a signature,
+- A job on a site that wants a sign-in you did not set up, a form that asks for a signature,
   and a form with a required question your profile cannot answer are not
   sent. They are listed in `applications/manual.csv`,
   each with the reason and the link. `npx jev log --manual`
