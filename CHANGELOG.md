@@ -24,6 +24,8 @@ changed for a person using the tool and what changed for a contributor.
   opens a list under it is followed there.
 
 ### Changed
+- The README and `docs/ACCOUNTS.md` say plainly that accounts (Workday)
+  and the Google connection are in progress and off by default.
 - A box that already shows the value it is meant to hold is left alone.
   A draft a site kept from an earlier visit is no longer written over
   box by box. On Workday, writing the country again redrew the name,

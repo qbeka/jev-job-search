@@ -1,5 +1,7 @@
 # Accounts
 
+> **In progress.** Two parts of the tool are still being built and are off by default: applying on boards that want an account (Workday, with `/accounts`), and the Google connection (Gmail, for verification emails and for `/inbox`). On the one real Workday form it has been tried on, the sign-in and the first page work and the later pages do not yet. The Gmail connection has not been run against a real mailbox. Until this note is gone, use the tool on the boards that need no account: Greenhouse, Lever, Ashby and the others listed in [SOURCES.md](SOURCES.md).
+
 *How the tool applies on a job board that wants an account, what you
 decide, and what stays yours to do.*
 
