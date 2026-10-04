@@ -94,7 +94,7 @@ export const defaultStore = (): SecretStore => (process.platform === "darwin" ? 
 /** Which of a board's password rules a password does not meet. Says which rules, never the password. */
 export function passwordProblems(password: Secret): string[] {
   const p = password.reveal();
-  const r = ACCOUNTS.passwordRules;
+  const r = ACCOUNTS.mustHave;
   const out: string[] = [];
   // The Keychain hands back anything else in another form, which would then be typed as the password.
   if (/[^\x21-\x7e]/.test(p)) out.push("only letters, digits and symbols from a plain keyboard, with no spaces");

@@ -327,8 +327,8 @@ export const ACCOUNTS = {
   signInBudgetMs: 240_000,
   /** Reads of a page the sign-in does not know before it is handed to the person: a page still drawing itself gets this many. */
   unknownReads: 4,
-  /** What a password must have for the boards the tool supports (Workday's rules). */
-  passwordRules: { minLength: 8, digit: true, lower: true, upper: true, special: true },
+  /** What the boards the tool supports ask of a new account's secret (Workday's rules). Only these rules are ever printed, never the secret. */
+  mustHave: { minLength: 8, digit: true, lower: true, upper: true, special: true },
 } as const;
 
 /** Reading the person's Gmail, with their consent, for the email a board sends to prove an inbox is theirs (`src/mail/`). */
