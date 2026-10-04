@@ -12,6 +12,10 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Added
+- Sixteen company boards with offices in Vancouver and Western Canada
+  are polled on every search (Hootsuite, Later, AbCellera, Kabam, Klue,
+  Trulioo, Jobber and others), each checked against its public board
+  before it was added. The lists often miss their postings.
 - `apply` on a job you named waits at an employer's sign-in. When your
   session there has ended and no password is stored, the sign-in page
   comes to the front, you are notified, and the run waits up to five

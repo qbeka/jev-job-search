@@ -75,6 +75,23 @@ export const SEED_BOARDS: Board[] = [
   { ats: "ashby", slug: "shakudo", company: "Shakudo" },
   { ats: "ashby", slug: "superhuman", company: "Superhuman" },
   { ats: "ashby", slug: "Superhuman%20Platform%20Inc", company: "Superhuman" },
+  // Companies with offices in Vancouver, or elsewhere in Western Canada, whose postings the lists often miss.
+  { ats: "greenhouse", slug: "hootsuite", company: "Hootsuite" },
+  { ats: "greenhouse", slug: "later", company: "Later" },
+  { ats: "greenhouse", slug: "abcellera", company: "AbCellera" },
+  { ats: "greenhouse", slug: "aspectbiosystems", company: "Aspect Biosystems" },
+  { ats: "greenhouse", slug: "layerzerolabs", company: "LayerZero Labs" },
+  { ats: "greenhouse", slug: "brex", company: "Brex" },
+  { ats: "greenhouse", slug: "7shifts", company: "7shifts" },
+  { ats: "lever", slug: "kabam", company: "Kabam" },
+  { ats: "lever", slug: "apryse", company: "Apryse" },
+  { ats: "lever", slug: "blackbirdinteractive", company: "Blackbird Interactive" },
+  { ats: "ashby", slug: "klue", company: "Klue" },
+  { ats: "ashby", slug: "trulioo", company: "Trulioo" },
+  { ats: "ashby", slug: "spare", company: "Spare" },
+  { ats: "ashby", slug: "neofinancial", company: "Neo Financial" },
+  { ats: "ashby", slug: "jobber", company: "Jobber" },
+  { ats: "ashby", slug: "lightspeedhq", company: "Lightspeed" },
 ];
 
 /** Every board the given jobs point at, merged with the seed list, deduped by ats+slug. */
