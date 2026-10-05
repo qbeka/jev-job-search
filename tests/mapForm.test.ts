@@ -282,7 +282,7 @@ describe("which document a file box asks for", () => {
 });
 
 
-describe("a plain yes or no about the person that code cannot check", () => {
+describe("a choice among a few statements about the person that code cannot check", () => {
   const yesNo = [{ value: "1", label: "Yes" }, { value: "0", label: "No" }];
   const pick = (choice: string, confidence: number) => ({ type: "choice", choice, confidence, probabilities: {} }) as never;
   const j = { id: "x", source: "t", company: "Acme", title: "Software Engineer", url: "https://example.com", ats: "greenhouse", locations: ["Mountain View, CA"], postedAt: null, terms: [], sponsorship: "unknown", degrees: [], category: null, description: "", descriptionSource: "none" } as never;
@@ -296,9 +296,21 @@ describe("a plain yes or no about the person that code cannot check", () => {
     expect(planField(office, pick("o0", 0.9), profile, j)).toMatchObject({ action: "fill", optionLabel: "Yes" });
   });
 
-  it("leaves a list of other choices at the usual floor", () => {
-    const list = field({ kind: "select", label: "How did you hear about us?", options: [{ value: "a", label: "Job board" }, { value: "b", label: "Referral" }, { value: "c", label: "Other" }] });
+  it("covers a short list that is not yes or no", () => {
+    const how = field({ kind: "radio", label: "Flexible Working", options: [{ value: "a", label: "In one of our offices" }, { value: "b", label: "Hybrid" }, { value: "c", label: "Fully remote" }], required: true });
+    expect(planField(how, pick("o2", 0.69), profile, j)).toMatchObject({ action: "review" });
+    expect(planField(how, pick("o1", 0.85), profile, j)).toMatchObject({ action: "fill", optionLabel: "Hybrid" });
+  });
+
+  it("leaves a long list at the usual floor", () => {
+    const list = field({ kind: "select", label: "How did you hear about us?", options: ["Job board", "Referral", "LinkedIn", "Career fair", "GitHub", "Event", "Other"].map((label) => ({ value: label, label })) });
     expect(planField(list, pick("o0", 0.6), profile, j)).toMatchObject({ action: "fill", optionLabel: "Job board" });
+  });
+
+  it("gives a box for first and last name both names, whichever name JEV took it for", () => {
+    const name = field({ label: "Name (first & last)", hint: "Please enter the name you go by day-to-day.", required: true });
+    expect(planField(name, { type: "choice", choice: "preferred_name", probabilities: {}, confidence: 0.73 }, profile, j)).toMatchObject({ action: "fill", key: "full_name", value: `${profile.name.first} ${profile.name.last}` });
+    expect(planField(field({ label: "First name" }), { type: "choice", choice: "first_name", probabilities: {}, confidence: 0.95 }, profile, j)).toMatchObject({ value: profile.name.first });
   });
 });
 

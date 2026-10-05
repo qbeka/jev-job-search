@@ -85,7 +85,7 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
 }
 
 /** Raised whenever the gates below change, so a plan cached under the old rules is not reused. */
-const PLAN_VERSION = 8;
+const PLAN_VERSION = 9;
 
 /** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
 const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
@@ -107,6 +107,8 @@ export function datePart(label: string, value: string): string | null {
   return String(which.startsWith("m") ? d.month : which.startsWith("d") ? d.day : d.year);
 }
 
+/** A name box that asks for the whole name: "Name (first & last)", "First and last name", "Full name". */
+const BOTH_NAMES = /\bfirst\b[^.]{0,12}\blast\b|\bfull name\b/i;
 /** A box that says the person goes by a name other than their legal one. */
 const PREFERRED_NAME_BOX = /\b(i have|i use|i go by)\b[^.]{0,30}\b(preferred|different|another) name\b/i;
 const ROUTINE_AGREEMENT = /\b(privacy|true|accurate|correct|complete|information (?:i|provided|above)|data (?:protection|processing))/i;
@@ -492,16 +494,18 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
     if ((category === "authorization" || category === "sponsorship") && polarity(opt.label) === null && a.confidence < FORM.gates.authority) {
       return { ...base, action: "review", key: "unknown", value: null, confidence: a.confidence, note: "an answer about the right to work that is not a plain yes or no" };
     }
-    // A yes or no about the right to work was checked against the profile above. Any other plain yes or no is a
-    // statement about the person that code cannot check, so a lean is not enough: the writer reads the standing answers.
-    const plainYesNo = category === "general" && f.options.length === 2 && f.options.every((o) => polarity(o.label) !== null);
-    const action = a.confidence >= (plainYesNo ? FORM.gates.yesNo : FORM.reviewConfidence) ? "fill" : "review";
+    // An answer about the right to work was checked against the profile above. Any other choice among a few
+    // statements (yes or no, office or hybrid or remote) is about the person and code cannot check it, so a
+    // lean is not enough: the writer reads the standing answers.
+    const statement = category === "general" && f.options.length <= FORM.gates.statementOptions;
+    const action = a.confidence >= (statement ? FORM.gates.statement : FORM.reviewConfidence) ? "fill" : "review";
     // Radios and comboboxes are matched by label in fillFields.js: radio value attributes are often missing or all "on".
     const value = f.kind === "select" ? opt.value : opt.label;
     return { ...base, action, key: `option:${a.choice}`, value, optionLabel: opt.label, confidence: a.confidence, note: a.confidence < FORM.autoConfidence ? `confidence ${a.confidence.toFixed(2)}` : null };
   }
 
-  const key = a.choice;
+  // A box that asks for first and last name takes both, whichever name JEV took it for.
+  const key = (a.choice === "first_name" || a.choice === "preferred_name") && BOTH_NAMES.test(f.label) ? "full_name" : a.choice;
   // Keys that would put the same text in the box are one answer, so their probabilities add up:
   // "country", "citizenship" and "work authorization country" all say Canada.
   const confidence = agreedConfidence(a, profile, job);

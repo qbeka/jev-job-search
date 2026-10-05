@@ -17,11 +17,14 @@ changed for a person using the tool and what changed for a contributor.
   work in the United States?" is read as a question about sponsorship. It was
   read as "are you authorized", so the true answer was held back and the form
   was set aside.
-- A plain yes or no about you that the tool cannot check against the profile
-  ("this role is four days a week in the office, can you meet that?") is
-  filled only when JEV is sure. When it only leans one way, Claude answers
-  from your facts and standing answers. One such question was answered "No"
-  against a standing answer that says yes.
+- A choice among a few statements about you that the tool cannot check
+  against the profile ("this role is four days a week in the office, can you
+  meet that?", "office, hybrid or remote?") is filled only when JEV is sure.
+  When it only leans one way, Claude answers from your facts and standing
+  answers. One such question was answered "No" against a standing answer
+  that says yes.
+- A box labelled "Name (first & last)" gets both names. It got the first
+  name alone when its hint asked for the name you go by.
 
 ## [1.6.0] - 2026-10-04
 
