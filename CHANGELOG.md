@@ -11,6 +11,18 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Fixed
+
+- A form that asks "Will you now or in the future require authorization to
+  work in the United States?" is read as a question about sponsorship. It was
+  read as "are you authorized", so the true answer was held back and the form
+  was set aside.
+- A plain yes or no about you that the tool cannot check against the profile
+  ("this role is four days a week in the office, can you meet that?") is
+  filled only when JEV is sure. When it only leans one way, Claude answers
+  from your facts and standing answers. One such question was answered "No"
+  against a standing answer that says yes.
+
 ## [1.6.0] - 2026-10-04
 
 ### Added

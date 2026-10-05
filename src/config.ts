@@ -184,9 +184,11 @@ export const FORM = {
   /**
    * Stricter rules for the answers that must be true. A checkbox is ticked at or above `tick` and
    * left at or below `leave`; between the two a person decides. An answer about the right to work
-   * whose option is not a plain yes or no needs `authority` confidence.
+   * whose option is not a plain yes or no needs `authority` confidence. A plain yes or no about the
+   * person that code cannot check (can you work in the office, can you meet this requirement) is
+   * filled at or above `yesNo`; below it the writer answers from the facts and the standing answers.
    */
-  gates: { tick: 0.7, leave: 0.3, authority: 0.85 },
+  gates: { tick: 0.7, leave: 0.3, authority: 0.85, yesNo: 0.8 },
   /** An answer this short (or a plain yes or no) must be what the box shows, not merely inside it: "No" is not "Not applicable". */
   shortAnswerChars: 3,
   /** Selects with more options than this are pre-filtered in code before JEV sees them. */
