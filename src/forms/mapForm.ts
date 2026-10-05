@@ -85,7 +85,7 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
 }
 
 /** Raised whenever the gates below change, so a plan cached under the old rules is not reused. */
-const PLAN_VERSION = 9;
+const PLAN_VERSION = 10;
 
 /** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
 const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
@@ -107,6 +107,8 @@ export function datePart(label: string, value: string): string | null {
   return String(which.startsWith("m") ? d.month : which.startsWith("d") ? d.day : d.year);
 }
 
+/** A question about working on site, in an office or in a city the person would move to. */
+const WORKPLACE_Q = /\brelocat|\bon[- ]?site\b|\bin[- ](?:the[- ])?office\b|\bin[- ]person\b|\bbased in\b|\bcommut|\bhybrid\b/i;
 /** A name box that asks for the whole name: "Name (first & last)", "First and last name", "Full name". */
 const BOTH_NAMES = /\bfirst\b[^.]{0,12}\blast\b|\bfull name\b/i;
 /** A box that says the person goes by a name other than their legal one. */
@@ -498,7 +500,10 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
     // statements (yes or no, office or hybrid or remote) is about the person and code cannot check it, so a
     // lean is not enough: the writer reads the standing answers.
     const statement = category === "general" && f.options.length <= FORM.gates.statementOptions;
-    const action = a.confidence >= (statement ? FORM.gates.statement : FORM.reviewConfidence) ? "fill" : "review";
+    // Where the person will work is settled by their standing answer about relocating, which the writer reads.
+    // JEV answers such a question from where they live now, and is sure of it.
+    const whereTheyWork = statement && WORKPLACE_Q.test(f.label);
+    const action = !whereTheyWork && a.confidence >= (statement ? FORM.gates.statement : FORM.reviewConfidence) ? "fill" : "review";
     // Radios and comboboxes are matched by label in fillFields.js: radio value attributes are often missing or all "on".
     const value = f.kind === "select" ? opt.value : opt.label;
     return { ...base, action, key: `option:${a.choice}`, value, optionLabel: opt.label, confidence: a.confidence, note: a.confidence < FORM.autoConfidence ? `confidence ${a.confidence.toFixed(2)}` : null };

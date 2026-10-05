@@ -23,6 +23,9 @@ changed for a person using the tool and what changed for a contributor.
   When it only leans one way, Claude answers from your facts and standing
   answers. One such question was answered "No" against a standing answer
   that says yes.
+- A yes or no about working on site, in an office or in a city you would
+  move to always goes to Claude, who reads your standing answer about
+  relocating. JEV answered one from where you live now.
 - A box labelled "Name (first & last)" gets both names. It got the first
   name alone when its hint asked for the name you go by.
 

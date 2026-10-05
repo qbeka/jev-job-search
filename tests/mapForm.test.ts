@@ -293,7 +293,16 @@ describe("a choice among a few statements about the person that code cannot chec
   });
 
   it("is filled when JEV is sure", () => {
-    expect(planField(office, pick("o0", 0.9), profile, j)).toMatchObject({ action: "fill", optionLabel: "Yes" });
+    const worked = field({ kind: "radio", label: "Have you worked for Acme before?", options: yesNo, required: true });
+    expect(planField(worked, pick("o1", 0.75), profile, j)).toMatchObject({ action: "review" });
+    expect(planField(worked, pick("o1", 0.9), profile, j)).toMatchObject({ action: "fill", optionLabel: "No" });
+  });
+
+  it("leaves a question about where the person will work to the writer, however sure JEV is", () => {
+    const based = field({ kind: "radio", label: "Are you currently based, or planning to be based in NYC and able to work on-site 3 days a week?", options: yesNo, required: true });
+    expect(planField(based, pick("o1", 0.95), profile, j)).toMatchObject({ action: "review" });
+    const lives = field({ kind: "radio", label: "Are you currently living in the UK?", options: yesNo, required: true });
+    expect(planField(lives, pick("o1", 0.95), profile, j)).toMatchObject({ action: "fill", optionLabel: "No" });
   });
 
   it("covers a short list that is not yes or no", () => {
