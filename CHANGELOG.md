@@ -18,6 +18,9 @@ changed for a person using the tool and what changed for a contributor.
 
 ### Fixed
 
+- `apply <link> <link> ...` with one link that cannot be read (a closed posting)
+  now names that link and runs the rest. It used to stop before filling
+  anything.
 - A right-to-work question on a posting that lists a city and "Remote" now gets
   its answer: the city says which country. Such forms were set aside with
   "the posting's country is not clear".
