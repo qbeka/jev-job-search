@@ -21,6 +21,14 @@ const CA_PROVINCE = /\b(AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)\b|\bCanada\b|Tor
 
 export type LocationTier = "vancouver" | "canada" | "remote" | "us" | "international" | "unclear";
 
+/** The country a posting's locations name, when one of them does: "San Francisco, Remote" is the United States, "KOHO (CAN), Remote" is Canada. */
+export function countryOfLocations(locations: string[]): "Canada" | "United States" | null {
+  const all = locations.join(" | ");
+  if (CA_PROVINCE.test(all) || /\bCAN\b/.test(all)) return "Canada";
+  if (US_STATE.test(all) || US_CITY.test(all)) return "United States";
+  return null;
+}
+
 export function locationTier(locations: string[]): LocationTier {
   const all = locations.join(" | ");
   if (/vancouver|burnaby|richmond, bc|surrey, bc/i.test(all)) return "vancouver";

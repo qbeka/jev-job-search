@@ -323,6 +323,19 @@ describe("a choice among a few statements about the person that code cannot chec
   });
 });
 
+describe("the country a right-to-work question means", () => {
+  it("is read from a city when the posting also says Remote", () => {
+    const j = (locations: string[]) => ({ id: "x", source: "t", company: "Acme", title: "Software Engineer", url: "https://example.com", ats: "ashby", locations, postedAt: null, terms: [], sponsorship: "unknown", degrees: [], category: null, description: "", descriptionSource: "none" }) as never;
+    const yesNo = [{ value: "1", label: "Yes" }, { value: "0", label: "No" }];
+    const sponsor = field({ kind: "radio", label: "Will you now or in the future require visa sponsorship?", options: yesNo, required: true });
+    const pick = (choice: string) => ({ type: "choice", choice, confidence: 0.95, probabilities: {} }) as never;
+    // The example profile is authorized in Canada only.
+    expect(planField(sponsor, pick("o0"), profile, j(["San Francisco", "Remote"]))).toMatchObject({ action: "fill", optionLabel: "Yes" });
+    expect(planField(sponsor, pick("o1"), profile, j(["KOHO (CAN)", "Remote"]))).toMatchObject({ action: "fill", optionLabel: "No" });
+    expect(planField(sponsor, pick("o1"), profile, j(["Remote"]))).toMatchObject({ action: "review" });
+  });
+});
+
 describe("a question about needing a work authorization", () => {
   it("is a question about sponsorship, not about being authorized", () => {
     const q = (label: string) => categoryOf({ label, section: "", hint: "", kind: "select" });

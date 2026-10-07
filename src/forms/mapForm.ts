@@ -17,7 +17,7 @@ import type { Answer, ChoiceAnswer, NoulAnswer, Questions } from "../jev/types.j
 import { ALL_KEYS, isProfileKey, isSpecialKey, profileFacts, valueFor, type FieldKey } from "../profile/fieldKeys.js";
 import { monthName, type Profile } from "../profile/schema.js";
 import { BANK_INTENTS } from "../answers/bank.js";
-import { locationTier } from "../jobs/hardFilters.js";
+import { countryOfLocations, locationTier } from "../jobs/hardFilters.js";
 import type { Job } from "../jobs/normalize.js";
 import type { DumpedField, FieldsDump, FillPlan, PlannedField } from "./fields.js";
 import { documentPolicy, documentsFor, tailorJob } from "../documents/tailor.js";
@@ -85,7 +85,7 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
 }
 
 /** Raised whenever the gates below change, so a plan cached under the old rules is not reused. */
-const PLAN_VERSION = 10;
+const PLAN_VERSION = 11;
 
 /** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
 const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
@@ -135,7 +135,10 @@ export function countryOf(label: string, job: Job): string | null {
   if (/\bcanad/i.test(label)) return "Canada";
   if (/united states|\bu\.?s\.?a?\.?\b|\bamerica\b/i.test(label)) return "United States";
   const tier = locationTier(job.locations);
-  return tier === "vancouver" || tier === "canada" ? "Canada" : tier === "us" ? "United States" : null;
+  if (tier === "vancouver" || tier === "canada") return "Canada";
+  if (tier === "us") return "United States";
+  // A posting that lists a city and "Remote" is read as remote; the city still says which country.
+  return countryOfLocations(job.locations);
 }
 
 /** Yes or No, when an option plainly says one of them. */

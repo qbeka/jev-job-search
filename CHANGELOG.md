@@ -13,6 +13,10 @@ changed for a person using the tool and what changed for a contributor.
 
 ### Fixed
 
+- A right-to-work question on a posting that lists a city and "Remote" now gets
+  its answer: the city says which country. Such forms were set aside with
+  "the posting's country is not clear".
+
 - A form that asks "Will you now or in the future require authorization to
   work in the United States?" is read as a question about sponsorship. It was
   read as "are you authorized", so the true answer was held back and the form
