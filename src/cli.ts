@@ -40,7 +40,7 @@ import { discover } from "./discover.js";
 import { formatChecks, isReadyToRun, nextStep, runChecks } from "./doctor.js";
 import { JevClient } from "./jev/client.js";
 import { loadKnowledge, shareKnowledge } from "./knowledge/sites.js";
-import { loadQueue, mutateQueue, sortEntries, updateEntry, QueueStatus } from "./jobs/queue.js";
+import { loadQueue, mutateQueue, sortEntries, updateEntry, QueueStatus, type QueueEntry } from "./jobs/queue.js";
 import { formatCost, loadCost } from "./log/cost.js";
 import { appliedRecords, loadRows, manualRecords, saveRows, toRecord, upsertEntry } from "./log/csv.js";
 import { loadProfile } from "./profile/schema.js";
@@ -118,17 +118,27 @@ async function inRun<T>(command: string, work: () => Promise<T>): Promise<T> {
 async function idsFromLinks(given: string[]): Promise<string[]> {
   const out: string[] = [];
   let jev: JevClient | null = null;
+  let skipped = 0;
   for (const g of given) {
     if (!looksLikeUrl(g)) {
       out.push(g);
       continue;
     }
     jev ??= new JevClient();
-    const e = await addJob(jev, loadProfile(), g);
+    // A link that cannot be read (a closed posting, a board the tool does not read) is named and left out; the rest still run.
+    let e: QueueEntry;
+    try {
+      e = await addJob(jev, loadProfile(), g);
+    } catch (err) {
+      console.log(`skipped: ${err instanceof Error ? err.message : String(err)}`);
+      skipped++;
+      continue;
+    }
     console.log(`${e.job.id}  ${e.job.company} | ${e.job.title}  (fit ${e.fit?.score.toFixed(2) ?? "?"})`);
     // A link to a job that was sent, or may have been, is passed on all the same: takeJobs refuses it and says why.
     out.push(e.job.id);
   }
+  if (skipped) console.log(`${skipped} link(s) could not be read and were left out`);
   return out;
 }
 
