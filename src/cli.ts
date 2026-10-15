@@ -142,11 +142,11 @@ async function idsFromLinks(given: string[]): Promise<string[]> {
   return out;
 }
 
-/** What this run does about documents: a tailored resume on request, a cover letter on request or when the profile says when_asked. */
+/** What this run does about documents: a tailored resume only on request (--tailor), a cover letter on request or when the profile says when_asked. A cover letter never swaps in a tailored resume. */
 const documentsFromOptions = (o: { tailor?: boolean; cover?: boolean; plain?: boolean }) => {
   if (o.plain) return setDocumentPolicy({ resume: false, cover: false });
   const cover = !!o.cover || loadProfile().preferences.coverLetter === "when_asked";
-  setDocumentPolicy({ resume: !!o.tailor || cover, cover });
+  setDocumentPolicy({ resume: !!o.tailor, cover });
 };
 
 program

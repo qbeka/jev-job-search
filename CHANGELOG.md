@@ -18,6 +18,9 @@ changed for a person using the tool and what changed for a contributor.
 
 ### Fixed
 
+- A cover letter no longer brings a tailored resume with it. `--cover` (and the
+  profile's `when_asked`) writes cover letters and sends your own resume; only
+  `--tailor` swaps in a resume written for the job.
 - `apply <link> <link> ...` with one link that cannot be read (a closed posting)
   now names that link and runs the rest. It used to stop before filling
   anything.

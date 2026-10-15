@@ -550,7 +550,7 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
   const prefetch = (i: number) => {
     const next = entries[i + 1];
     const policy = documentPolicy();
-    if (!next || !policy.resume || o.dry) return;
+    if (!next || !(policy.resume || policy.cover) || o.dry) return;
     tailorJob(profile, next, { cover: policy.cover }).catch(() => undefined);
   };
   await paced(entries, (e) => hostOf(applyUrlFor(asJob(e))), async (e) => {
