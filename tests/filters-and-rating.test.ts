@@ -166,5 +166,11 @@ describe("usStatus", () => {
     expect(usStatus(wa(["United States"], ["India"]))).toEqual({ authorized: true, citizen: false });
     expect(usStatus(wa(["USA", "Canada"], ["U.S."]))).toEqual({ authorized: true, citizen: true });
   });
+  it("counts a candidate who needs sponsorship later as not authorized without it, so the rating still skips a refusal", () => {
+    const later = { workAuthorization: { ...wa(["Canada"], ["Canada"]).workAuthorization, authorizedWithSponsorshipLater: ["U.S."] } };
+    expect(usStatus(later)).toEqual({ authorized: false, citizen: false });
+    const refuses = answers({ work_auth: { choice: "us_no_sponsorship", confidence: 0.8 } });
+    expect(scoreFromAnswers(job({ locations: ["SF"] }), refuses, new Date("2026-11-01"), usStatus(later)).skipReason).toMatch(/no sponsorship/);
+  });
 });
 

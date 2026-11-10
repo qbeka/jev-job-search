@@ -15,7 +15,7 @@ import type { JevClient } from "../jev/client.js";
 import { choice, noul } from "../jev/questions.js";
 import type { Answer, ChoiceAnswer, NoulAnswer, Questions } from "../jev/types.js";
 import { ALL_KEYS, isProfileKey, isSpecialKey, profileFacts, valueFor, type FieldKey } from "../profile/fieldKeys.js";
-import { monthName, type Profile } from "../profile/schema.js";
+import { monthName, sponsorshipLater, type Profile } from "../profile/schema.js";
 import { BANK_INTENTS } from "../answers/bank.js";
 import { countryOfLocations, locationTier } from "../jobs/hardFilters.js";
 import type { Job } from "../jobs/normalize.js";
@@ -26,6 +26,7 @@ import { loadQueue } from "../jobs/queue.js";
 const NONE = "__none__";
 
 export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fields: DumpedField[]): Record<string, unknown> {
+  const later = sponsorshipLater(profile);
   const tier = locationTier(job.locations);
   const country = tier === "vancouver" || tier === "canada" ? "Canada" : tier === "us" ? "United States" : tier === "remote" ? "remote (treat as the company's country)" : "unknown";
   return {
@@ -36,6 +37,8 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
       work_authorization: {
         citizenships: profile.workAuthorization.citizenships,
         authorized_without_sponsorship_in: profile.workAuthorization.authorizedCountries,
+        // Only when the profile lists any, so the plans cached for every other profile stay valid.
+        ...(later.length ? { authorized_now_but_needs_sponsorship_later_in: later } : {}),
         needs_sponsorship_elsewhere: profile.workAuthorization.requiresSponsorshipElsewhere,
         statement: profile.workAuthorization.statement,
         for_this_job: authForCountry(profile, country),
@@ -60,7 +63,9 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
       standing_answers: profile.answers,
       gpa_policy: "Only give a GPA if the field is required. The cumulative GPA is " + (profile.education[0]?.gpa?.cumulative ?? "not provided") + " on a 4.0 scale.",
       rules: [
-        `The candidate may work without sponsorship only in: ${profile.workAuthorization.authorizedCountries.join(", ")}. Never claim work authorization anywhere else.`,
+        later.length
+          ? `The candidate may work without sponsorship only in: ${profile.workAuthorization.authorizedCountries.join(", ")}. They are also authorized to work now in: ${later.join(", ")}, but will need visa sponsorship there in the future. Never claim work authorization anywhere else.`
+          : `The candidate may work without sponsorship only in: ${profile.workAuthorization.authorizedCountries.join(", ")}. Never claim work authorization anywhere else.`,
         "Never write a cover letter.",
         "Salary expectation is left blank or set to negotiable.",
         "Marketing opt-ins are optional and left unchecked. Consent and acknowledgement boxes required to apply are checked.",
@@ -169,9 +174,15 @@ export function gateAnswer(f: Pick<DumpedField, "label" | "section" | "hint" | "
   return null;
 }
 
+/**
+ * The true answers for one country. Authorized means the candidate may work there now; sponsorship
+ * means they will need it now or later, so a country in `authorizedWithSponsorshipLater` is Yes to both.
+ */
 export function authForCountry(profile: Profile, country: string): { authorized: "Yes" | "No"; requires_sponsorship: "Yes" | "No" } {
-  const ok = profile.workAuthorization.authorizedCountries.some((c) => country.toLowerCase().includes(c.toLowerCase()));
-  return { authorized: ok ? "Yes" : "No", requires_sponsorship: ok ? "No" : "Yes" };
+  const names = (list: string[]) => list.some((c) => country.toLowerCase().includes(c.toLowerCase()));
+  const later = names(sponsorshipLater(profile));
+  const free = !later && names(profile.workAuthorization.authorizedCountries);
+  return { authorized: free || later ? "Yes" : "No", requires_sponsorship: free ? "No" : "Yes" };
 }
 
 const TEXT_KINDS = new Set(["text", "email", "tel", "url", "number", "date", "calendar", "textarea"]);

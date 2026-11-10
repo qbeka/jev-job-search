@@ -4,7 +4,7 @@
  * the box. Keys are the choice criteria, so each description must be a clear
  * definition the model can match a label against.
  */
-import { monthName, type Profile } from "./schema.js";
+import { monthName, sponsorshipLater, type Profile } from "./schema.js";
 
 export const SPECIAL_KEYS = {
   resume_upload: "A file input for the resume or CV",
@@ -140,7 +140,7 @@ export function valueFor(profile: Profile, key: ProfileKey): string | null {
     case "education_level": return edu.degree;
     case "currently_enrolled": return edu.status === "in_progress" ? "Yes" : "No";
     case "citizenship": return profile.workAuthorization.citizenships.join(", ");
-    case "work_authorization_country": return profile.workAuthorization.authorizedCountries.join(", ");
+    case "work_authorization_country": return [...new Set([...profile.workAuthorization.authorizedCountries, ...sponsorshipLater(profile)])].join(", ");
     case "authorized_to_work": return null; // decided per posting country by the select mapper
     case "requires_sponsorship": return null; // decided per posting country by the select mapper
     case "work_authorization_statement": return profile.workAuthorization.statement;
@@ -200,6 +200,8 @@ export function profileFacts(profile: Profile): Record<string, string> {
   }
   out.citizenships = profile.workAuthorization.citizenships.join(", ");
   out.authorized_countries = profile.workAuthorization.authorizedCountries.join(", ");
+  const later = sponsorshipLater(profile);
+  if (later.length) out.authorized_now_but_needs_sponsorship_later_in = later.join(", ");
   out.requires_sponsorship_outside_authorized_countries = profile.workAuthorization.requiresSponsorshipElsewhere ? "Yes" : "No";
   return out;
 }

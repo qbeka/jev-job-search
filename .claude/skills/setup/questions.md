@@ -34,6 +34,7 @@ part F.
 |---|---|
 | Your citizenships | `workAuthorization.citizenships` |
 | The countries where you can work today with no visa sponsorship | `workAuthorization.authorizedCountries` |
+| Any country where you may work now or by your start date but will need sponsorship later, such as the United States on F-1 OPT or STEM OPT (often none) | `workAuthorization.authorizedWithSponsorshipLater` |
 | Would you need sponsorship to work anywhere else? | `workAuthorization.requiresSponsorshipElsewhere` |
 | One sentence that states your status, for forms that ask you to explain | `workAuthorization.statement` |
 

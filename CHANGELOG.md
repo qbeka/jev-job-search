@@ -11,6 +11,14 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added
+- `workAuthorization.authorizedWithSponsorshipLater` in the profile: countries
+  where you may work now or by your start date but will need sponsorship
+  later, such as the United States on F-1 OPT or STEM OPT. Forms for a job
+  there are answered Yes to "authorized to work?" and Yes to "will you require
+  sponsorship?", and discovery still drops postings there that refuse
+  sponsorship. Profiles without it work as before.
+
 ### Changed
 - A run takes at most three roles from one employer, never two in a row, and
   waits eight minutes between two applications to the same employer.
