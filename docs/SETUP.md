@@ -63,7 +63,13 @@ important choices:
 - `education[0].gpa.volunteer`: `false` means the GPA is only entered when a
   form will not submit without it.
 - `workAuthorization`: list only the countries where you can work without
-  sponsorship. `statement` is used verbatim when a form asks you to explain.
+  sponsorship, now and later, in `authorizedCountries`. A country where you
+  may work now or by your start date but will need sponsorship later (the
+  United States on F-1 OPT or STEM OPT, for example) goes in
+  `authorizedWithSponsorshipLater` instead: forms there are told you are
+  authorized and that you will need sponsorship, and postings there that
+  refuse sponsorship are dropped. `statement` is used verbatim when a form
+  asks you to explain.
 - `demographics`: answer as you want them answered, including "Prefer not
   to say".
 - `preferences.salaryExpectation`: leave empty to never volunteer a number.

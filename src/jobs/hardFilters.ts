@@ -40,7 +40,7 @@ export function locationTier(locations: string[]): LocationTier {
   return "international";
 }
 
-/** us: the candidate's standing in the United States. A candidate who may work there is not ruled out by "no sponsorship". */
+/** us: the candidate's standing in the United States. A candidate who may work there without sponsorship, now and later, is not ruled out by "no sponsorship". */
 export function preFilter(
   job: Job,
   now = new Date(),

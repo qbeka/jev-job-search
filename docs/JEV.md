@@ -120,7 +120,7 @@ guard against a bug, not a budget.
 
 ### Fit rating (`src/jobs/rate.ts`, one call per job)
 
-State: `{ job: { company, title, locations, posted_days_ago, terms_from_source, sponsorship_flag_from_source, description }, candidate: { summary, skills, facts, graduation, citizenship, authorized_to_work_in, preferred_locations } }`
+State: `{ job: { company, title, locations, posted_days_ago, terms_from_source, sponsorship_flag_from_source, description }, candidate: { summary, skills, facts, graduation, citizenship, authorized_to_work_in, authorized_now_but_needs_sponsorship_later_in?, preferred_locations } }` (the `?` key only when the profile lists such a country)
 
 | Key | Type | Why |
 |---|---|---|

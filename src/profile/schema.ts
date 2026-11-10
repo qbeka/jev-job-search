@@ -99,6 +99,14 @@ export const ProfileSchema = z.object({
     citizenships: z.array(z.string()).min(1),
     /** Countries where the candidate can work without sponsorship. */
     authorizedCountries: z.array(z.string()).min(1),
+    /**
+     * Countries where the candidate may work now or by the start date, but will need the employer
+     * to sponsor a visa later (a student on US OPT or STEM OPT, for example). A question whether
+     * they are authorized to work there is answered Yes, and one whether they will need
+     * sponsorship is answered Yes too. A country listed here needs sponsorship even if
+     * `authorizedCountries` names it as well.
+     */
+    authorizedWithSponsorshipLater: z.array(z.string()).optional(),
     /** Whether sponsorship would be needed in any country not listed above. */
     requiresSponsorshipElsewhere: z.boolean(),
     /** One sentence, used verbatim when a form asks to explain status. */
@@ -161,13 +169,21 @@ export function loadProfile(file = PATHS.profile): Profile {
   return parsed.data;
 }
 
+/** Countries where the candidate may work now but will need sponsorship later. Empty when the profile lists none. */
+export function sponsorshipLater(profile: Pick<Profile, "workAuthorization">): string[] {
+  return profile.workAuthorization.authorizedWithSponsorshipLater ?? [];
+}
+
 /**
  * The candidate's standing in the United States. Most postings on the lists are American and many
  * refuse sponsorship, so discovery needs to know whether that rules the candidate out.
+ * `authorized` means authorized without sponsorship, now and later: a candidate who will need
+ * sponsorship later (US OPT) is not, since a posting that refuses sponsorship refuses them.
  */
 export function usStatus(profile: Pick<Profile, "workAuthorization">): { authorized: boolean; citizen: boolean } {
   const isUs = (c: string) => /^(united states( of america)?|u\.?s\.?a?\.?)$/i.test(c.trim());
-  return { authorized: profile.workAuthorization.authorizedCountries.some(isUs), citizen: profile.workAuthorization.citizenships.some(isUs) };
+  const later = sponsorshipLater(profile).some(isUs);
+  return { authorized: !later && profile.workAuthorization.authorizedCountries.some(isUs), citizen: profile.workAuthorization.citizenships.some(isUs) };
 }
 
 export const MONTHS = [

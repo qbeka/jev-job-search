@@ -7,7 +7,7 @@ import { FIT_WEIGHTS, GRADUATION_MISMATCH_MULTIPLIER, LOCATION_MULTIPLIER, RECEN
 import type { JevClient } from "../jev/client.js";
 import { choice, noul, score, scoreToUnit } from "../jev/questions.js";
 import type { Answer, ChoiceAnswer, NoulAnswer, Questions, ScoreAnswer } from "../jev/types.js";
-import { monthName, usStatus, type Profile } from "../profile/schema.js";
+import { monthName, sponsorshipLater, usStatus, type Profile } from "../profile/schema.js";
 import { locationTier, type LocationTier } from "./hardFilters.js";
 import { ageDays, type Job } from "./normalize.js";
 import { hashOf, type KeyedCache } from "../util/cache.js";
@@ -112,6 +112,8 @@ export function buildFitState(job: Job, profile: Profile, now = new Date()): Rec
       graduation: profile.education[0] ? `${monthName(profile.education[0].gradMonth)} ${profile.education[0].gradYear}` : "not given",
       citizenship: profile.workAuthorization.citizenships,
       authorized_to_work_in: profile.workAuthorization.authorizedCountries,
+      // Only when the profile lists any, so the ratings cached for every other profile stay valid.
+      ...(sponsorshipLater(profile).length ? { authorized_now_but_needs_sponsorship_later_in: sponsorshipLater(profile) } : {}),
       preferred_locations: profile.preferences.preferredLocations,
     },
   };
