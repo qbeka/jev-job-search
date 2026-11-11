@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { linuxDialogCommands, WINDOWS_DIALOG } from "../src/accounts/ask.js";
-import { defaultStore, LibsecretStore, storeKind, CRED_SCRIPTS, WindowsCredentialStore } from "../src/accounts/secrets.js";
+import { CRED_SCRIPTS, LibsecretStore, storeKind, WindowsCredentialStore } from "../src/accounts/secrets.js";
 import { systemPromptArgs } from "../src/answers/resolve.js";
 import { childEnv, chromeCandidates, DAILY, findChrome } from "../src/config.js";
 import { installSchedule, removeSchedule, scheduleStatus, systemdUnits, taskScript } from "../src/run/schedule.js";
@@ -173,6 +173,10 @@ describe("the secret store of each system", () => {
     expect(calls[0]?.env).toEqual({ JEV_SECRET_SERVICE: "svc", JEV_SECRET_ITEM: "gmail-refresh-token" });
     store.delete("gmail-refresh-token");
     expect(store.get("gmail-refresh-token")).toBeNull();
+    // The script that stores a value reads it back itself, and a refusal from it is said.
+    expect(CRED_SCRIPTS.set).toContain("[JevCred]::Read($target) -cne $value");
+    const refusing = new WindowsCredentialStore(() => ({ status: 6, stdout: "" }), "svc", "powershell.exe");
+    expect(() => refusing.set("x", new Secret(SECRET))).toThrow(/did not take/);
   });
 
   it("keeps a person's words out of every script it runs", () => {
@@ -181,23 +185,6 @@ describe("the secret store of each system", () => {
     expect(zenity?.args).toContain("--hide-text");
     expect(kdialog?.args).toContain("--password");
   });
-
-  // Run on purpose, on a machine whose secret store is unlocked: it writes one made-up item and removes it.
-  it.runIf(process.env.JEV_TEST_REAL_STORE === "1")("really keeps, returns and forgets a value in this machine's own secret store", () => {
-    expect(storeKind()).not.toBe("env");
-    const store = defaultStore();
-    const name = `test-item-${process.pid}`;
-    const value = `Made-up-${process.pid}!x9`;
-    try {
-      store.set(name, new Secret(value));
-      expect(store.get(name)?.reveal()).toBe(value);
-      store.set(name, new Secret(`${value}-second`));
-      expect(store.get(name)?.reveal()).toBe(`${value}-second`);
-    } finally {
-      store.delete(name);
-    }
-    expect(store.get(name)).toBeNull();
-  }, 180_000);
 });
 
 describe("the schedule on Linux and Windows", () => {

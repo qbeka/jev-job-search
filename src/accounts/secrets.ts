@@ -147,7 +147,8 @@ const CRED = [
   "'@",
   "$target = $env:JEV_SECRET_SERVICE + ':' + $env:JEV_SECRET_ITEM",
 ];
-const CRED_WRITE = "if (-not [JevCred]::Write($target, $env:JEV_SECRET_ITEM, $value)) { exit 5 }";
+// Written, then read back in the same script: Credential Manager has a size limit, and a value it refused or cut must not pass as stored.
+const CRED_WRITE = "if (-not [JevCred]::Write($target, $env:JEV_SECRET_ITEM, $value)) { exit 5 }\nif ([JevCred]::Read($target) -cne $value) { exit 6 }";
 export const CRED_SCRIPTS = {
   get: [...CRED, "$found = [JevCred]::Read($target)", "if ($null -eq $found) { exit 3 }", "[Console]::Out.Write($found)"].join("\n"),
   set: [...CRED, "$value = [Console]::In.ReadLine()", "if ([string]::IsNullOrEmpty($value)) { exit 4 }", CRED_WRITE].join("\n"),
@@ -179,9 +180,8 @@ export class WindowsCredentialStore implements SecretStore {
   }
 
   set(name: string, value: Secret): void {
-    const r = this.call(CRED_SCRIPTS.set, name, { input: `${oneLine(name, value)}\n` });
-    // The value is read back: Credential Manager has a size limit, and a value it refused must not pass as stored.
-    if (r.status !== 0 || this.get(name)?.reveal() !== value.reveal()) throw new Error(`Windows Credential Manager did not take ${name}`);
+    // The script reads the value back itself before it answers, so one start of PowerShell does both.
+    if (this.call(CRED_SCRIPTS.set, name, { input: `${oneLine(name, value)}\n` }).status !== 0) throw new Error(`Windows Credential Manager did not take ${name}`);
   }
 
   setByPerson(name: string): boolean {
