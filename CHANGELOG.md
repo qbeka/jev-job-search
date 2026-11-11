@@ -11,6 +11,8 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-11
+
 ### Added
 - Linux and Windows. Chrome is found where each system installs it
   (`CHROME_PATH` in `.env` for anywhere else), passwords and tokens are kept
