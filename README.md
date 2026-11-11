@@ -106,16 +106,11 @@ The agent that runs the skills and the model that writes your answers are two se
 
 ```mermaid
 flowchart LR
-  A["/setup<br>your resume and<br>a short interview"] --> B["/discover<br>public lists and<br>company boards"]
-  B --> C["JEV rates each<br>posting against<br>your profile"]
-  C --> D["/apply<br>one Chrome tab<br>per form"]
-  D --> E["JEV maps<br>every field"]
-  E --> F["The writer answers<br>what is left open"]
-  F --> G{"Every value<br>read back from<br>the page?"}
-  G -- yes --> H["Sent, once you<br>said so"]
-  G -- no --> I["Held, with<br>the reason"]
-  H --> J["applications/<br>applied.csv"]
-  I --> K["applications/<br>manual.csv"]
+  A["/setup<br>your resume and<br>a short interview"] --> B["/discover<br>JEV rates public<br>postings for you"]
+  B --> C["/apply<br>JEV maps every field,<br>the writer answers the rest"]
+  C --> D{"Every value<br>read back from<br>the page?"}
+  D -- yes --> E["Sent, once<br>you said so"]
+  D -- no --> F["Held for you,<br>with the reason"]
 ```
 
 Each job goes through the same loop on its own, and its result is printed the moment it is known:
