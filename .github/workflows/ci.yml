@@ -14,9 +14,13 @@ concurrency:
 
 jobs:
   check:
-    name: typecheck, test, audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    name: typecheck, test, audit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -28,8 +32,21 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npx vitest run
+      # The secret store of each system, for real: one made-up item is kept, read back and removed.
+      - name: the keyring keeps a value (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsecret-tools gnome-keyring dbus-x11
+          dbus-run-session -- bash -c 'echo -n "ci" | gnome-keyring-daemon --unlock --components=secrets && JEV_TEST_REAL_STORE=1 npx vitest run tests/platform.test.ts'
+      - name: the Keychain or Credential Manager keeps a value (macOS, Windows)
+        if: runner.os != 'Linux'
+        run: npx vitest run tests/platform.test.ts
+        env:
+          JEV_TEST_REAL_STORE: "1"
       - run: npm audit --omit=dev --audit-level=high
       - name: no personal data or keys in tracked files
+        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           if git grep -nE "sk-or-v1-[A-Za-z0-9]{20,}" -- . ':!docs/SAFETY.md' ':!.github/workflows/ci.yml' ':!src/jev/client.ts' ':!tests/jev-client.test.ts'; then

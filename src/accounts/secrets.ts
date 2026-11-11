@@ -1,11 +1,15 @@
 /**
- * Where passwords and tokens live. On a Mac that is the Keychain, through the system's own
- * `security` command. A value is handed out only as a Secret, which cannot be printed or saved by
- * accident, and it never travels in a command's arguments, where another process could read it.
+ * Where passwords and tokens live: the system's own secret store. On a Mac that is the Keychain,
+ * through the `security` command. On Linux it is the desktop keyring (GNOME Keyring, KWallet's
+ * Secret Service), through `secret-tool`. On Windows it is Credential Manager, through a fixed
+ * PowerShell script. A value is handed out only as a Secret, which cannot be printed or saved by
+ * accident, and it never travels in a command's arguments, where another process could read it:
+ * it goes in on standard input and comes back on standard output.
  */
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { ACCOUNTS, childEnv } from "../config.js";
+import { powershellArgs, powershellPath } from "../util/platform.js";
 import { Secret } from "../util/redact.js";
 
 export interface SecretStore {
@@ -52,17 +56,117 @@ export class KeychainStore implements SecretStore {
   }
 }
 
-/** The environment variable that stands in for a Keychain item on a machine without one: "accounts-password" is JEV_ACCOUNTS_PASSWORD. */
+type Run = (command: string, args: string[], opts: { input?: string; inherit?: boolean; env?: Record<string, string> }) => Pick<SpawnSyncReturns<string>, "status" | "stdout">;
+
+const runCommand: Run = (command, args, opts) =>
+  spawnSync(command, args, { encoding: "utf8", env: childEnv(opts.env ?? {}), windowsHide: true, stdio: opts.inherit ? "inherit" : ["pipe", "pipe", "pipe"], ...(opts.input !== undefined ? { input: opts.input } : {}) });
+
+/** A value that goes in as one line on standard input must be one line. */
+const oneLine = (name: string, value: Secret): string => {
+  if (/[\x00-\x1f\x7f]/.test(value.reveal())) throw new Error(`the value for ${name} holds a character the secret store's command cannot take`);
+  return value.reveal();
+};
+
+/**
+ * The Linux desktop keyring, through `secret-tool` (the libsecret-tools package). The item is found
+ * by two attributes, the service and the account, which hold names and never a secret.
+ */
+export class LibsecretStore implements SecretStore {
+  constructor(private readonly run: Run = runCommand, private readonly service: string = ACCOUNTS.keychainService) {}
+
+  private attrs(name: string): string[] {
+    return ["service", this.service, "account", name];
+  }
+
+  get(name: string): Secret | null {
+    const r = this.run("secret-tool", ["lookup", ...this.attrs(name)], {});
+    const value = (r.stdout ?? "").replace(/\n$/, "");
+    return r.status === 0 && value ? new Secret(value) : null;
+  }
+
+  set(name: string, value: Secret): void {
+    // `secret-tool store` reads the value from standard input, to its end.
+    const r = this.run("secret-tool", ["store", `--label=${this.service}: ${name}`, ...this.attrs(name)], { input: oneLine(name, value) });
+    if (r.status !== 0 || this.get(name)?.reveal() !== value.reveal()) throw new Error(`the keyring did not take ${name}. Is it unlocked?`);
+  }
+
+  setByPerson(name: string): boolean {
+    // With a terminal on standard input, `secret-tool store` asks for the value itself, without showing it.
+    return this.run("secret-tool", ["store", `--label=${this.service}: ${name}`, ...this.attrs(name)], { inherit: true }).status === 0;
+  }
+
+  delete(name: string): void {
+    this.run("secret-tool", ["clear", ...this.attrs(name)], {});
+  }
+}
+
+// Fixed scripts. The names come from the environment and the value from standard input, so nothing is ever joined into script text.
+const VAULT = [
+  "$ErrorActionPreference = 'Stop'",
+  "[void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]",
+  "$vault = New-Object Windows.Security.Credentials.PasswordVault",
+  "$service = $env:JEV_SECRET_SERVICE",
+  "$item = $env:JEV_SECRET_ITEM",
+];
+const VAULT_REMOVE = "try { $vault.Remove($vault.Retrieve($service, $item)) } catch { }";
+const VAULT_ADD = "$vault.Add((New-Object Windows.Security.Credentials.PasswordCredential($service, $item, $value)))";
+export const VAULT_SCRIPTS = {
+  get: [...VAULT, "try { $c = $vault.Retrieve($service, $item) } catch { exit 3 }", "$c.RetrievePassword()", "[Console]::Out.Write($c.Password)"].join("\n"),
+  set: [...VAULT, "$value = [Console]::In.ReadLine()", "if ([string]::IsNullOrEmpty($value)) { exit 4 }", VAULT_REMOVE, VAULT_ADD].join("\n"),
+  ask: [
+    ...VAULT,
+    "$typed = Read-Host -AsSecureString 'Password (not shown)'",
+    "$value = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($typed))",
+    "if ([string]::IsNullOrEmpty($value)) { exit 4 }",
+    VAULT_REMOVE,
+    VAULT_ADD,
+  ].join("\n"),
+  delete: [...VAULT, VAULT_REMOVE].join("\n"),
+} as const;
+
+/**
+ * Windows Credential Manager (its Web Credentials vault), through Windows PowerShell, which every
+ * Windows 10 and 11 has. Each call runs one of the fixed scripts above.
+ */
+export class WindowsVaultStore implements SecretStore {
+  constructor(private readonly run: Run = runCommand, private readonly service: string = ACCOUNTS.keychainService, private readonly powershell: string = powershellPath()) {}
+
+  private call(script: string, name: string, opts: { input?: string; inherit?: boolean } = {}) {
+    return this.run(this.powershell, powershellArgs(script, { interactive: !!opts.inherit }), { ...opts, env: { JEV_SECRET_SERVICE: this.service, JEV_SECRET_ITEM: name } });
+  }
+
+  get(name: string): Secret | null {
+    const r = this.call(VAULT_SCRIPTS.get, name);
+    const value = r.stdout ?? "";
+    return r.status === 0 && value ? new Secret(value) : null;
+  }
+
+  set(name: string, value: Secret): void {
+    const r = this.call(VAULT_SCRIPTS.set, name, { input: `${oneLine(name, value)}\n` });
+    // The value is read back: the vault has limits of its own, and a value it cut short must not pass as stored.
+    if (r.status !== 0 || this.get(name)?.reveal() !== value.reveal()) throw new Error(`Windows Credential Manager did not take ${name}`);
+  }
+
+  setByPerson(name: string): boolean {
+    return this.call(VAULT_SCRIPTS.ask, name, { inherit: true }).status === 0;
+  }
+
+  delete(name: string): void {
+    this.call(VAULT_SCRIPTS.delete, name);
+  }
+}
+
+/** The environment variable that stands in for a stored item on a machine with no secret store: "accounts-password" is JEV_ACCOUNTS_PASSWORD. */
 export const envNameOf = (item: string) => `JEV_${item.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
 
-/** Environment variables, for a machine with no Keychain. The values are read here and nowhere else. */
+/** Environment variables, for a machine with no secret store (a Linux machine without `secret-tool`). The values are read here and nowhere else. */
 export class EnvStore implements SecretStore {
   get(name: string): Secret | null {
     const v = process.env[envNameOf(name)];
     return v ? new Secret(v) : null;
   }
   set(): void {
-    throw new Error("this machine has no Keychain: put the value in .env yourself");
+    throw new Error("this machine has no secret store. On Linux, install libsecret-tools (the `secret-tool` command) and a keyring, or put the value in .env yourself");
   }
   setByPerson(): boolean {
     return false;
@@ -110,14 +214,28 @@ export function generatePassword(): Secret {
   return new Secret(chars.join(""));
 }
 
-export const defaultStore = (): SecretStore => (process.platform === "darwin" ? new KeychainStore() : new EnvStore());
+let hasSecretTool: boolean | null = null;
+/** Whether `secret-tool` is installed. Asked once per process. */
+const secretToolInstalled = (): boolean => (hasSecretTool ??= runCommand("secret-tool", ["--version"], {}).status === 0);
+
+/** What kind of store this machine has: the system's own, or, on a Linux machine without `secret-tool`, the environment. */
+export function storeKind(platform: NodeJS.Platform = process.platform, secretTool: () => boolean = secretToolInstalled): "keychain" | "vault" | "libsecret" | "env" {
+  if (platform === "darwin") return "keychain";
+  if (platform === "win32") return "vault";
+  return secretTool() ? "libsecret" : "env";
+}
+
+export function defaultStore(): SecretStore {
+  const kind = storeKind();
+  return kind === "keychain" ? new KeychainStore() : kind === "vault" ? new WindowsVaultStore() : kind === "libsecret" ? new LibsecretStore() : new EnvStore();
+}
 
 /** Which of a board's password rules a password does not meet. Says which rules, never the password. */
 export function passwordProblems(password: Secret): string[] {
   const p = password.reveal();
   const r = ACCOUNTS.mustHave;
   const out: string[] = [];
-  // The Keychain hands back anything else in another form, which would then be typed as the password.
+  // A secret store hands back anything else in another form, which would then be typed as the password.
   if (/[^\x21-\x7e]/.test(p)) out.push("only letters, digits and symbols from a plain keyboard, with no spaces");
   if (p.length < r.minLength) out.push(`at least ${r.minLength} characters`);
   if (r.digit && !/\d/.test(p)) out.push("a digit");
