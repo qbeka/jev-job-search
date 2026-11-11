@@ -215,8 +215,8 @@ export function generatePassword(): Secret {
 }
 
 let hasSecretTool: boolean | null = null;
-/** Whether `secret-tool` is installed. Asked once per process. */
-const secretToolInstalled = (): boolean => (hasSecretTool ??= runCommand("secret-tool", ["--version"], {}).status === 0);
+/** Whether `secret-tool` is installed: it has no version flag, so it is asked something harmless and only its absence counts. Asked once per process. */
+const secretToolInstalled = (): boolean => (hasSecretTool ??= !spawnSync("secret-tool", ["search", "service", ACCOUNTS.keychainService], { stdio: "ignore", env: childEnv() }).error);
 
 /** What kind of store this machine has: the system's own, or, on a Linux machine without `secret-tool`, the environment. */
 export function storeKind(platform: NodeJS.Platform = process.platform, secretTool: () => boolean = secretToolInstalled): "keychain" | "vault" | "libsecret" | "env" {

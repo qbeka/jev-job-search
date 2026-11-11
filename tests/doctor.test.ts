@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,7 +24,7 @@ describe("doctor", () => {
     expect(checkKey("").fix).toMatch(/Do not paste the key into a chat/);
   });
   it("reads the example profile and names a missing one", () => {
-    const { check, profile } = checkProfile(new URL("../data/profile.example.json", import.meta.url).pathname);
+    const { check, profile } = checkProfile(fileURLToPath(new URL("../data/profile.example.json", import.meta.url)));
     expect(check.ok).toBe(true);
     expect(profile?.name.first).toBeTruthy();
     expect(checkProfile("/nowhere/profile.json").check).toMatchObject({ ok: false });

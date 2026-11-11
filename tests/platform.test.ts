@@ -56,15 +56,20 @@ describe("starting a command on each system", () => {
     for (const bad of ['say "hi"', "%PATH%", "two\nlines"]) expect(() => spawnPlan("codex", [bad], { platform: "win32", env, exists }), bad).toThrow(/cannot be passed/);
   });
 
-  it.runIf(process.platform === "win32")("really passes arguments through a .cmd file on Windows", () => {
+  it.runIf(process.platform === "win32")("really passes arguments through a .cmd file on Windows, the way npm installs a command", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "jev cmd "));
-    const out = path.join(dir, "seen.txt");
-    writeFileSync(path.join(dir, "shim.cmd"), `@echo off\r\necho 1=[%~1] 2=[%~2] 3=[%~3] 4=[%~4]> "${out}"\r\n`);
-    const plan = spawnPlan("shim", ["plain", "two words", "", "a&b|c"], { env: { ...process.env, PATH: `${dir};${process.env.PATH ?? ""}` } });
+    const out = path.join(dir, "seen.json");
+    writeFileSync(path.join(dir, "echo.js"), "require('node:fs').writeFileSync(process.env.JEV_TEST_OUT, JSON.stringify(process.argv.slice(2)));\n");
+    // What npm writes for a command: a .cmd file that hands its arguments on to node.
+    writeFileSync(path.join(dir, "shim.cmd"), '@ECHO off\r\n"%~dp0\\node_stand_in.cmd" %*\r\n');
+    writeFileSync(path.join(dir, "node_stand_in.cmd"), `@ECHO off\r\n"${process.execPath}" "%~dp0\\echo.js" %*\r\n`);
+    const args = ["exec", "-", "--model", "two words", "", "a&b|c<d>e", "C:\\dir with space\\"];
+    const plan = spawnPlan("shim", args, { env: { ...process.env, PATH: `${dir};${process.env.PATH ?? ""}` } });
     expect(plan.verbatim).toBe(true);
-    const r = spawnSync(plan.file, plan.args, { encoding: "utf8", env: childEnv(), windowsVerbatimArguments: plan.verbatim });
+    const r = spawnSync(plan.file, plan.args, { encoding: "utf8", env: childEnv({ JEV_TEST_OUT: out }), windowsVerbatimArguments: plan.verbatim });
+    expect(r.stderr).toBe("");
     expect(r.status).toBe(0);
-    expect(readFileSync(out, "utf8").trim()).toBe("1=[plain] 2=[two words] 3=[] 4=[a&b|c]");
+    expect(JSON.parse(readFileSync(out, "utf8"))).toEqual(args);
   });
 
   it("gives Claude Code its system prompt as a file on Windows, where a command line cannot carry it, and removes the file", () => {

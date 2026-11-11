@@ -100,11 +100,20 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the sign-in in a real browser"
   it("puts its helpers back when the page loads again under it", async () => {
     const { page } = await open();
     await install(page);
-    expect(await page.awj<string>("pageText")).toMatch(/Create Account/);
+    // The page draws its form after it has asked the board who is signed in, which a slow machine shows.
+    const drawn = async () => {
+      let text = "";
+      for (let i = 0; i < 50 && !/Create Account/.test(text); i++) {
+        text = await page.awj<string>("pageText").catch(() => "");
+        if (!/Create Account/.test(text)) await sleep(100);
+      }
+      return text;
+    };
+    expect(await drawn()).toMatch(/Create Account/);
     // The site loads its page a second time, as Workday does once it knows who is signed in.
     await page.evaluate("location.reload()");
     for (let i = 0; i < 40 && (await page.evaluate<string>("document.readyState").catch(() => "")) !== "complete"; i++) await sleep(100);
-    expect(await page.awj<string>("pageText")).toMatch(/Create Account/);
+    expect(await drawn()).toMatch(/Create Account/);
     expect((await dump(page)).hasPassword).toBe(true);
     page.close();
   }, 60_000);
