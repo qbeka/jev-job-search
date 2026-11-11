@@ -5,6 +5,12 @@
 *How the tool applies on a job board that wants an account, what you
 decide, and what stays yours to do.*
 
+This page was written on a Mac and says "Keychain" and "your Mac"
+throughout. On Linux read "your keyring" (through `secret-tool`), and on
+Windows "Credential Manager": the same secrets are kept the same way, under
+the same names. [PLATFORMS.md](PLATFORMS.md) has the table, and says that
+accounts have been used for real on macOS only.
+
 Most of the boards the tool fills need no account. Workday does: every
 employer on Workday keeps its own accounts, and you cannot see the form
 until you are signed in. That is a large share of all postings.
@@ -298,9 +304,9 @@ never written to a file.
 
 `data/accounts.json` holds no secret. You can read it and edit it.
 
-On a machine with no Keychain, a password is read from `.env`
-(`JEV_ACCOUNTS_PASSWORD` for the shared one), new accounts cannot be made,
-and Gmail cannot be connected.
+On a Linux machine with no keyring command (`secret-tool`), a password is
+read from `.env` (`JEV_ACCOUNTS_PASSWORD` for the shared one), new accounts
+cannot be made, and Gmail cannot be connected.
 
 ## What has been tested, and what has not
 
