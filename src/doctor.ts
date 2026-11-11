@@ -12,6 +12,7 @@ import { loadAccounts } from "./accounts/config.js";
 import { defaultStore, type SecretStore } from "./accounts/secrets.js";
 import { loadGmail } from "./mail/gmail.js";
 import { askWriter } from "./answers/resolve.js";
+import { spawnPlan } from "./util/platform.js";
 import { JevClient } from "./jev/client.js";
 import { noul } from "./jev/questions.js";
 import { loadQueue } from "./jobs/queue.js";
@@ -36,7 +37,16 @@ export function checkNode(version = process.versions.node): Check {
 }
 
 export function checkChrome(file: string = BROWSER.chromePath): Check {
-  return { name: "Google Chrome", ok: existsSync(file), detail: existsSync(file) ? "installed" : `not found at ${file}`, fix: "Install Google Chrome from https://www.google.com/chrome, or set BROWSER.chromePath in src/config.ts" };
+  const ok = existsSync(file);
+  const other = ok && !/chrome/i.test(path.basename(file)) ? ` (${path.basename(file)}, which speaks the same protocol)` : "";
+  return { name: "Google Chrome", ok, detail: ok ? `installed${other}` : `not found at ${file}`, fix: "Install Google Chrome from https://www.google.com/chrome. If it is installed somewhere unusual, put its full path in .env as CHROME_PATH=" };
+}
+
+/** Asks a command for its version, started the way each system needs. */
+function versionOf(command: string): { status: number | null; stdout: string } {
+  const plan = spawnPlan(command, ["--version"]);
+  const r = spawnSync(plan.file, plan.args, { encoding: "utf8", env: childEnv(), windowsHide: true, windowsVerbatimArguments: plan.verbatim });
+  return { status: r.status, stdout: r.stdout ?? "" };
 }
 
 /** Who writes: Claude Code on the person's subscription by default, or the backend WRITER_BACKEND names. */
@@ -56,11 +66,11 @@ export function checkClaude(): Check {
     return { name: "Writer", ok: true, detail: `${writerModel(backend)} at ${baseUrl}${key ? ", billed to WRITER_API_KEY in .env" : ", with no key"}`, fix: "" };
   }
   if (backend === "codex") {
-    const r = spawnSync(WRITER.codex.command, ["--version"], { encoding: "utf8", env: childEnv() });
+    const r = versionOf(WRITER.codex.command);
     const ok = r.status === 0;
     return { name: "Codex", ok, detail: ok ? `${r.stdout.trim()} on your ChatGPT plan${writerModel(backend) ? ` (${writerModel(backend)})` : ""}` : "the codex command was not found", fix: "Install the Codex CLI and run `codex` once to sign in, or leave WRITER_BACKEND empty in .env to use Claude Code" };
   }
-  const r = spawnSync(WRITER.command, ["--version"], { encoding: "utf8", env: childEnv() });
+  const r = versionOf(WRITER.command);
   const ok = r.status === 0;
   return { name: "Claude", ok, detail: ok ? `Claude Code ${r.stdout.trim()} on your subscription` : "the claude command was not found", fix: "Install Claude Code from https://code.claude.com and run `claude` once to sign in, or put ANTHROPIC_API_KEY in .env to use the Claude API instead. To write with another model, set WRITER_BACKEND in .env (docs/SETUP.md)" };
 }
@@ -164,13 +174,11 @@ export async function checkClaudeOnline(): Promise<Check> {
     }
   }
   const fix = "Run `claude` once in a terminal and sign in";
-  const r = spawnSync(WRITER.command, ["-p", "--model", writerModel(backend), "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", "Reply with the single word ok."], { input: "ok?", encoding: "utf8", timeout: DOCTOR.claudeTimeoutMs, env: childEnv(WRITER.env) });
   try {
-    const envelope = JSON.parse(r.stdout) as { is_error?: boolean; result?: string };
-    const ok = r.status === 0 && !envelope.is_error;
-    return { name: "Claude answers", ok, detail: ok ? `Claude Code signed in, ${writerModel(backend)} at ${WRITER.effort} effort` : String(envelope.result).slice(0, 200), fix };
-  } catch {
-    return { name: "Claude answers", ok: false, detail: (r.stderr || "no answer").slice(0, 200), fix };
+    const text = await askWriter("ok?", "Reply with the single word ok.");
+    return { name: "Claude answers", ok: /ok/i.test(text), detail: `Claude Code signed in, ${writerModel(backend)} at ${WRITER.effort} effort`, fix };
+  } catch (err) {
+    return { name: "Claude answers", ok: false, detail: (err instanceof Error ? err.message : String(err)).slice(0, 200), fix };
   }
 }
 

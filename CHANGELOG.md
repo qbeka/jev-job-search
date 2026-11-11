@@ -12,6 +12,13 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Added
+- Linux and Windows. Chrome is found where each system installs it
+  (`CHROME_PATH` in `.env` for anywhere else), passwords and tokens are kept
+  in the Linux keyring (`secret-tool`) or Windows Credential Manager, the
+  password window, notifications and opening links use each system's own
+  tools, and `schedule install` registers a systemd user timer or a Task
+  Scheduler task. CI runs the tests on Ubuntu, macOS and Windows. Until this
+  release the tool ran on macOS only.
 - Other writers. `WRITER_BACKEND=codex` in `.env` writes with the Codex CLI on
   your ChatGPT plan, and `WRITER_BACKEND=openai` with any service that speaks
   OpenAI's chat completions (OpenAI, OpenRouter, a model on your own machine),

@@ -12,6 +12,7 @@ import type { Profile } from "../profile/schema.js";
 import type { Tailored } from "./tailor.js";
 import { renderTemplate, type View } from "./template.js";
 import { activeTemplate } from "./templates.js";
+import { pathToFileURL } from "node:url";
 
 export const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 
@@ -101,7 +102,7 @@ export async function printPdf(html: string, outFile: string): Promise<number> {
   if (existsSync(outFile)) unlinkSync(outFile);
   // Chrome writes the PDF and may then linger, so the file is watched and Chrome is stopped once it is whole.
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(BROWSER.chromePath, ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-pdf-header-footer", `--print-to-pdf=${outFile}`, `--user-data-dir=${path.join(PATHS.runs, "print-profile")}`, `file://${htmlFile}`], { stdio: ["ignore", "ignore", "pipe"], env: childEnv() });
+    const child = spawn(BROWSER.chromePath, ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-pdf-header-footer", `--print-to-pdf=${outFile}`, `--user-data-dir=${path.join(PATHS.runs, "print-profile")}`, pathToFileURL(htmlFile).href], { stdio: ["ignore", "ignore", "pipe"], env: childEnv() });
     let err = "";
     let done = false;
     const finish = (fail?: Error) => {

@@ -63,17 +63,21 @@ doctor` says what is in place and what to do next.
   noted. The tool solves no CAPTCHAs.
 - **You never touch a credential.** When you work in this repo you never
   ask for, read, type or repeat a password, a code or a token, and never
-  read the Keychain. The password is typed by the person into a window of
-  their own Mac (`src/accounts/ask.ts`). You never start a run that signs
+  read the Keychain or any other secret store. The password is typed by the
+  person into a window of their own computer (`src/accounts/ask.ts`). You never start a run that signs
   in or signs up at an employer, which includes `apply` on a Workday job
   with or without `--dry`: show the command in a `bash` block and let the
   person click Run. You build and test against the scripted pages
   in `tests/helpers/` with made-up credentials.
-- **Secrets live in the Keychain and travel as `Secret`.** Passwords and
-  the Gmail tokens are in the macOS Keychain (`src/accounts/secrets.ts`),
-  never in a file, never in a command's arguments, never in a prompt to
-  Claude or JEV, a report, a plan, a trace or a record. Password boxes and
-  one-time-code boxes are never dumped.
+- **Secrets live in the system's secret store and travel as `Secret`.**
+  Passwords and the Gmail tokens are in the macOS Keychain, the Linux
+  keyring (`secret-tool`) or Windows Credential Manager
+  (`src/accounts/secrets.ts`), never in a file, never in a command's
+  arguments, never in a prompt to Claude or JEV, a report, a plan, a trace or
+  a record. A value goes into the store on standard input, and the scripts
+  that reach the store are fixed text: names come from the environment,
+  nothing is joined into a script. Password boxes and one-time-code boxes are
+  never dumped.
 - **A human check is the person's to pass.** That includes a CAPTCHA and
   a code a board emails to confirm a person is applying. No such code is
   ever read from mail or typed into a form, by the tool or by you. The
@@ -169,6 +173,10 @@ doctor` says what is in place and what to do next.
 ## Conventions
 
 - TypeScript, strict, ESM, Node 22, run with `tsx`. No build step.
+- macOS, Linux and Windows. What differs between them is in
+  `src/util/platform.ts`, the secret stores and the scheduler, each with the
+  system's command injected so a test can stand in for it. CI runs the tests
+  on all three. A command is started through `spawnPlan`, never a shell.
 - Two runtime dependencies (`commander`, `zod`) plus the Node standard
   library. The browser layer uses Node's own `fetch` and `WebSocket`. Adding
   a dependency needs a reason in the PR.

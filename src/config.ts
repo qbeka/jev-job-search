@@ -230,9 +230,35 @@ export const CACHE = {
   maxPlans: 400,
 } as const;
 
+/**
+ * Where Chrome is usually installed, per system, in the order they are tried. Chromium and, on
+ * Windows, Edge speak the same DevTools protocol and are taken when Chrome itself is not there.
+ */
+export function chromeCandidates(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string[] {
+  if (platform === "darwin") {
+    const app = "Google Chrome.app/Contents/MacOS/Google Chrome";
+    return [`/Applications/${app}`, path.join(env.HOME ?? os.homedir(), "Applications", app), "/Applications/Chromium.app/Contents/MacOS/Chromium"];
+  }
+  if (platform === "win32") {
+    const roots = [env.PROGRAMFILES, env["PROGRAMFILES(X86)"], env.LOCALAPPDATA].filter((r): r is string => !!r);
+    return [...roots.map((r) => path.win32.join(r, "Google", "Chrome", "Application", "chrome.exe")), ...roots.map((r) => path.win32.join(r, "Microsoft", "Edge", "Application", "msedge.exe"))];
+  }
+  return ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/snap/bin/chromium"];
+}
+
+/** The browser the runner drives: CHROME_PATH from .env when set, else the first usual place that holds one, else the first usual place, so a message can name it. */
+export function findChrome(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, exists: (file: string) => boolean = existsSync): string {
+  const asked = (env.CHROME_PATH ?? "").trim();
+  if (asked) return asked;
+  const candidates = chromeCandidates(platform, env);
+  return candidates.find((c) => exists(c)) ?? (candidates[0] as string);
+}
+
 export const BROWSER = {
-  /** The Chrome binary the fill runner drives over the DevTools protocol. */
-  chromePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  /** The Chrome binary the fill runner drives over the DevTools protocol. Looked up when it is needed, so CHROME_PATH in .env counts. */
+  get chromePath(): string {
+    return findChrome();
+  },
   /** Local DevTools port of the runner's own Chrome window. */
   port: 9333,
   /** Its profile lives with the other run data, so it is git-ignored and keeps cookies between runs. */
@@ -392,12 +418,15 @@ export const DAILY = {
   jevBudgetUsd: 0.5,
   /** The name the scheduled run is registered under with macOS, and the time it runs when none is given. */
   label: "com.jev-job-search.daily",
+  /** The same on Linux (a systemd user timer and its service) and on Windows (a task in Task Scheduler). */
+  systemdUnit: "jev-job-search-daily",
+  windowsTask: "jev-job-search daily",
   at: "09:00",
 } as const;
 
 /** Signing in to job boards the person has an account on, and making an account where they allowed it (`src/accounts/`). */
 export const ACCOUNTS = {
-  /** The name every secret is kept under in the Keychain. */
+  /** The name every secret is kept under in the Keychain, the keyring or Credential Manager. */
   keychainService: "jev-job-search",
   /** The one password used for employer accounts, set with `jev accounts password`. */
   passwordItem: "accounts-password",
@@ -450,7 +479,7 @@ export const GMAIL = {
 
 /** Help for the person when a form waits on them (`src/run/assist.ts`). */
 export const ASSIST = {
-  /** Post a notification on the Mac. */
+  /** Post a notification on the desktop. */
   notify: true,
   /** For an emailed human-check code, open the person's own mail at a search for it. The tool reads no mail for this. */
   openMail: true,
@@ -459,7 +488,16 @@ export const ASSIST = {
 
 /** What a child process may inherit from the environment. Keys and passwords are not on the list, so no child ever sees one. */
 export const CHILD_ENV = {
-  allow: ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY"],
+  allow: [
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+    "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY",
+    // A Linux desktop: the session a window, a notification or the keyring is reached through.
+    "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "DBUS_SESSION_BUS_ADDRESS",
+    // Windows: where the system, the person's folders and programs are. A program does not start without them.
+    "SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "USERNAME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "ProgramData", "ProgramFiles", "ProgramFiles(x86)", "CommonProgramFiles",
+    // Without it Windows PowerShell searches the disk for its modules on every start: 18 seconds in place of a third of one, measured.
+    "PSModulePath",
+  ],
 } as const;
 
 /** The environment for a child process: the allowed names only, plus what the caller adds on purpose. */
@@ -474,6 +512,8 @@ export const STORE = {
   /** How long a command waits for another command's write to finish. */
   lockWaitMs: 15_000,
   lockPollMs: 25,
+  /** How many times replacing a file is tried again on Windows while another process has it open. */
+  renameRetries: 40,
   /** A write lock older than this was left by a process that hung. */
   lockStaleMs: 60_000,
   /** A run lock older than this was left behind: no run lasts this long. */
@@ -546,7 +586,6 @@ export const DOCTOR = {
   maxResumeBytes: 5_000_000,
   /** A queue older than this is worth refreshing before a run: postings close. */
   staleQueueHours: 24,
-  claudeTimeoutMs: 60_000,
 } as const;
 
 export const RUN = {

@@ -4,8 +4,8 @@
  * notification, puts the form in front, and opens the person's own mail at a search for that
  * email, so the code is one glance away.
  */
-import { spawn } from "node:child_process";
-import { ASSIST, childEnv } from "../config.js";
+import { ASSIST } from "../config.js";
+import { notifyDesktop, openExternal } from "../util/platform.js";
 import type { WaitingFor } from "../jobs/queue.js";
 
 const WORDS: Record<WaitingFor, string> = {
@@ -30,30 +30,22 @@ export function mailSearchUrl(host: string): string {
   return `${ASSIST.mailSearchBase}${encodeURIComponent(q)}`;
 }
 
-const run = (command: string, args: string[]) => {
-  try {
-    spawn(command, args, { stdio: "ignore", detached: true, env: childEnv() }).unref();
-  } catch {
-    /* help that cannot be given is not an error */
-  }
-};
-
-/** A notification on the Mac. The words travel as arguments, never as script text. */
+/** A notification on the person's desktop. The words travel as arguments or in a fixed script's environment, never as script text. */
 export function notify(title: string, body: string): void {
-  if (process.platform !== "darwin" || !ASSIST.notify) return;
-  run("/usr/bin/osascript", ["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body]);
+  if (!ASSIST.notify) return;
+  notifyDesktop(title, body);
 }
 
 /** Tells the person a form waits on them and, for an emailed code, opens their mail at the search for it. */
 export function assist(job: { company: string; title: string }, waitingFor: WaitingFor, pageUrl: string): void {
   notify("jev-job-search needs you", `${job.company}: ${WORDS[waitingFor]}`);
-  if ((waitingFor === "human_code" || waitingFor === "email_link") && ASSIST.openMail && process.platform === "darwin") {
+  if ((waitingFor === "human_code" || waitingFor === "email_link") && ASSIST.openMail) {
     let host = "";
     try {
       host = new URL(pageUrl).hostname;
     } catch {
       host = "";
     }
-    if (host) run("/usr/bin/open", [mailSearchUrl(host)]);
+    if (host) openExternal(mailSearchUrl(host));
   }
 }

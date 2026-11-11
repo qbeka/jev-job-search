@@ -116,8 +116,10 @@ describe("another writer, when the person names one", () => {
     for (const flag of ["--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check"]) expect(args).toContain(flag);
     expect(args[args.indexOf("--sandbox") + 1]).toBe("read-only");
     expect(args).toContain("features.shell_tool=false");
-    expect(args).toContain('web_search="disabled"');
-    expect(args).toContain('model_reasoning_effort="low"');
+    expect(args).toContain("web_search=disabled");
+    expect(args).toContain("model_reasoning_effort=low");
+    // Nothing a Windows command line cannot carry to a .cmd file.
+    expect(args.join(" ")).not.toMatch(/["%]/);
     expect(args).not.toContain("--model");
     expect(codexArgs("high", "m1").slice(-2)).toEqual(["--model", "m1"]);
     expect(codexPrompt("FORM", "RULES").indexOf("RULES")).toBeLessThan(codexPrompt("FORM", "RULES").indexOf("FORM"));

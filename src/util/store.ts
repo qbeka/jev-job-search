@@ -20,7 +20,28 @@ export function writeAtomic(file: string, text: string): void {
   } finally {
     closeSync(fd);
   }
-  renameSync(tmp, file);
+  // On Windows a file that another process has open for a moment (a reader, a virus scanner) cannot be replaced until it lets go.
+  for (let tries = 0; ; tries++) {
+    try {
+      renameSync(tmp, file);
+      return;
+    } catch (err) {
+      if (!busyOnWindows(err) || tries >= STORE.renameRetries) {
+        try {
+          unlinkSync(tmp);
+        } catch {
+          /* nothing was left behind */
+        }
+        throw err;
+      }
+      pause(STORE.lockPollMs);
+    }
+  }
+}
+
+/** Windows answers "not permitted" or "busy" for a file that is open elsewhere or is on its way out. That is a reason to wait, not an error. */
+function busyOnWindows(err: unknown): boolean {
+  return process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes((err as NodeJS.ErrnoException).code ?? "");
 }
 
 const alive = (pid: number): boolean => {
@@ -70,6 +91,12 @@ export function withLock<T>(name: string, fn: () => T, dir = PATHS.locks): T {
       closeSync(fd);
       break;
     } catch (err) {
+      if (busyOnWindows(err)) {
+        // The holder is removing its lock this instant: the file is neither there nor free yet.
+        if (Date.now() > deadline) throw new Error(`could not get the ${name} lock: its file stayed busy for ${Math.round(STORE.lockWaitMs / 1000)}s`);
+        pause(STORE.lockPollMs);
+        continue;
+      }
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
       const body = readLock(file);
       if (!body || !alive(body.pid) || Date.now() - body.at > STORE.lockStaleMs) {

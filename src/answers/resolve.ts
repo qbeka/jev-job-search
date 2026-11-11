@@ -6,7 +6,9 @@
  * may also say the job should not be applied to, with a reason.
  */
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import { childEnv, DOCUMENTS, PATHS, WRITER, writerApi, writerBackend, writerModel } from "../config.js";
 import type { QueueEntry } from "../jobs/queue.js";
@@ -14,6 +16,7 @@ import type { Profile } from "../profile/schema.js";
 import { BANK_DRAFTS, BANK_INTENTS } from "./bank.js";
 import { answerContext, jobContext } from "./context.js";
 import { fingerprintOf, Resolution, type OpenField } from "./memory.js";
+import { spawnPlan } from "../util/platform.js";
 import { registerSecret } from "../util/redact.js";
 
 export { Resolution, type OpenField };
@@ -263,10 +266,14 @@ function runHeadless(command: string, args: string[], input: string, env: Record
   return new Promise((resolve, reject) => {
     mkdirSync(WRITER.cwd, { recursive: true });
     const started = Date.now();
-    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], cwd: WRITER.cwd, env: childEnv(env) });
+    // On Windows a command installed with npm is a .cmd file: the plan starts it the way Windows needs.
+    const plan = spawnPlan(command, args);
+    const child = spawn(plan.file, plan.args, { stdio: ["pipe", "pipe", "pipe"], cwd: WRITER.cwd, env: childEnv(env), windowsHide: true, windowsVerbatimArguments: plan.verbatim });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
+      // Behind `cmd /c` the command is a grandchild, which ending cmd alone would leave running.
+      if (plan.verbatim && child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", env: childEnv(), windowsHide: true }).on("error", () => undefined);
       child.kill("SIGKILL");
       reject(new Error(`the writer did not answer in ${WRITER.timeoutMs / 1000}s`));
     }, WRITER.timeoutMs);
@@ -295,7 +302,8 @@ function runHeadless(command: string, args: string[], input: string, env: Record
 export function codexArgs(effort: string, model: string): string[] {
   return [
     "exec", "-", "--skip-git-repo-check", "--sandbox", "read-only", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--color", "never",
-    "-c", "features.shell_tool=false", "-c", 'web_search="disabled"', "-c", "project_doc_max_bytes=0", "-c", `model_reasoning_effort="${effort}"`,
+    // Codex reads a value it cannot parse as TOML as plain text, so these need no quotes, which a Windows command line could not carry.
+    "-c", "features.shell_tool=false", "-c", "web_search=disabled", "-c", "project_doc_max_bytes=0", "-c", `model_reasoning_effort=${effort}`,
     ...(model ? ["--model", model] : []),
   ];
 }
@@ -312,9 +320,23 @@ async function callCodex(prompt: string, system: string, meta: { purpose: Writer
   return text;
 }
 
+/**
+ * How the system prompt reaches Claude Code. It is an argument where a command line can carry it.
+ * A Windows command line is too short for a candidate's whole context and cannot carry it through
+ * a .cmd file at all, so there it is a file with the other run data, removed when the call is over.
+ */
+export function systemPromptArgs(system: string, platform: NodeJS.Platform = process.platform): { args: string[]; cleanup: () => void } {
+  if (platform !== "win32") return { args: ["--system-prompt", system], cleanup: () => undefined };
+  mkdirSync(PATHS.runs, { recursive: true });
+  const file = path.join(PATHS.runs, `writer-system-${randomBytes(6).toString("hex")}.txt`);
+  writeFileSync(file, system, { mode: 0o600 });
+  return { args: ["--system-prompt-file", file], cleanup: () => rmSync(file, { force: true }) };
+}
+
 async function callClaudeCode(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
-  const args = ["-p", "--model", writerModel("claude-code"), "--effort", effortFor(meta.purpose), "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", system];
-  const { out } = await runHeadless(WRITER.command, args, prompt, WRITER.env, "Claude Code must be installed and logged in.");
+  const sys = systemPromptArgs(system);
+  const args = ["-p", "--model", writerModel("claude-code"), "--effort", effortFor(meta.purpose), "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", ...sys.args];
+  const { out } = await runHeadless(WRITER.command, args, prompt, WRITER.env, "Claude Code must be installed and logged in.").finally(sys.cleanup);
   let envelope: Envelope;
   try {
     envelope = JSON.parse(out) as Envelope;

@@ -4,7 +4,6 @@
  * discover.ts, run/pipeline.ts and browser/. Commands that list things take
  * --json so their output can be read by a program.
  */
-import { spawn } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -18,7 +17,7 @@ import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob } from "./browser/submit.js";
-import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { ACCOUNTS, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
 import { clearStop, dailyRun, formatDaily, localDay, requestStop, saveDaily, stopRequested, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
@@ -32,7 +31,8 @@ import { signedInNow, signInFor } from "./accounts/gate.js";
 import { workdayParts } from "./sources/ats/workday.js";
 import { applyUrlFor } from "./jobs/normalize.js";
 import { goto } from "./browser/session.js";
-import { defaultStore, itemFor } from "./accounts/secrets.js";
+import { defaultStore, itemFor, storeKind } from "./accounts/secrets.js";
+import { openExternal, storeWords } from "./util/platform.js";
 import { askPassword } from "./accounts/ask.js";
 import { connect as connectGmail, disconnect as disconnectGmail, loadGmail } from "./mail/gmail.js";
 import { installRedaction } from "./util/redact.js";
@@ -249,12 +249,12 @@ program
     if (action === "install") {
       if (!loadPolicy()) return console.log(`Write your standing policy first: ${PATHS.policy} does not exist. Run /daily in Claude Code, or copy data/policy.example.json.`);
       const s = installSchedule(o.at);
-      console.log(`Scheduled: \`jev daily\` runs every day at ${s.at} while this Mac is on and you are signed in.\nWhat it prints goes to ${PATHS.dailyLog}. To stop it: npx jev schedule remove`);
+      console.log(`Scheduled: \`jev daily\` runs every day at ${s.at} while this computer is on and you are signed in.\nWhat it prints goes to ${PATHS.dailyLog}. To stop it: npx jev schedule remove`);
     } else if (action === "remove") {
       console.log(removeSchedule() ? "The schedule is removed. Nothing runs by itself now." : "No schedule was installed.");
     } else if (action === "status") {
       const s = scheduleStatus();
-      console.log(s.installed ? `A daily run is scheduled${s.loaded ? "" : ", but macOS has not loaded it. Install it again: npx jev schedule install"}. Its file: ${s.file}` : "Nothing is scheduled. The daily run only happens when you run it: npx jev daily");
+      console.log(s.installed ? `A daily run is scheduled${s.loaded ? "" : ", but your system's scheduler does not have it. Install it again: npx jev schedule install"}. Its file: ${s.file}` : "Nothing is scheduled. The daily run only happens when you run it: npx jev daily");
     } else {
       console.log("The actions are: install, remove, status");
     }
@@ -293,7 +293,7 @@ program
         if (d.cover) console.log(`   cover letter: ${d.cover}`);
         if (d.tailored.keywordsCovered.length) console.log(`   covers: ${d.tailored.keywordsCovered.slice(0, 12).join(", ")}`);
         if (d.tailored.keywordsMissing.length) console.log(`   the posting also wants, and your profile does not say: ${d.tailored.keywordsMissing.slice(0, 8).join(", ")}`);
-        if (o.open) for (const f of [d.resume, d.cover]) if (f) spawn("open", [f], { stdio: "ignore", detached: true, env: childEnv() }).unref();
+        if (o.open) for (const f of [d.resume, d.cover]) if (f) openExternal(f);
       } catch (err) {
         console.log(`== ${e.job.company} | ${e.job.title} [${e.job.id}]  not written: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -313,12 +313,12 @@ program
     if (o.static) {
       writeFileSync(o.static, reportPage(buildReport(loadRows())));
       console.log(`Wrote ${o.static}`);
-      if (o.open) spawn("open", [o.static], { stdio: "ignore", detached: true, env: childEnv() }).unref();
+      if (o.open) openExternal(o.static);
       return;
     }
     const address = await startReportServer(o.port);
     console.log(`Dashboard at ${address}  (Ctrl-C to stop)`);
-    if (o.open) spawn("open", [address], { stdio: "ignore", detached: true, env: childEnv() }).unref();
+    if (o.open) openExternal(address);
   });
 
 program
@@ -503,7 +503,7 @@ program
       return show();
     }
     if (action === "password") {
-      if (process.platform !== "darwin") return console.log("This machine has no Keychain. Put the password in .env as JEV_ACCOUNTS_PASSWORD=...");
+      if (storeKind() === "env") return console.log("This machine has no secret store the tool can use. Install libsecret-tools (the `secret-tool` command) with a keyring, or put the password in .env as JEV_ACCOUNTS_PASSWORD=...");
       // With an employer: that account's own password. Without: the one tried at accounts you already had.
       let item: string = ACCOUNTS.passwordItem;
       let what = "The password you use on job-board accounts you already have.";
@@ -519,13 +519,13 @@ program
         console.log(`${what} Type it below. It is not shown.`);
         if (!store.setByPerson(item)) return console.log("Nothing was stored.");
       } else {
-        console.log("A window on your Mac is asking for the password. Type it there, twice. It goes into your Keychain and is never shown here.");
+        console.log(`A window on your screen is asking for the password. Type it there, twice. It goes into ${storeWords()} and is never shown here.`);
         const asked = askPassword(undefined, { what, existing: true });
         if (!asked.ok) return console.log(asked.why === "cancelled" ? "Nothing was stored: the window was closed or left unanswered." : asked.why === "mismatch" ? "Nothing was stored: the two did not match. Run it again." : `Nothing was stored: the password needs ${(asked.problems ?? []).join(", ")}.`);
         store.set(item, asked.password);
       }
       clearPauses({}, id || undefined);
-      return console.log(`Stored in your Keychain${id ? `, and the pause on ${id} is lifted` : ""}. Then: /resume`);
+      return console.log(`Stored in ${storeWords()}${id ? `, and the pause on ${id} is lifted` : ""}. Then: /resume`);
     }
     if (action === "signin" || action === "setup") {
       if (!target) return console.log(`Say where: /accounts ${action} <employer or a link to one of its postings>`);
@@ -587,7 +587,7 @@ program
 
 program
   .command("gmail <action>")
-  .description("Let the tool read the email a job board sends to prove your address when an account is made. connect | status | disconnect. Read-only access, kept in your Keychain")
+  .description("Let the tool read the email a job board sends to prove your address when an account is made. connect | status | disconnect. Read-only access, kept in your system's secret store")
   .option("--client <file>", "with connect: the OAuth client file Google Cloud gave you (a Desktop app client)")
   .action(async (action: string, o: { client?: string }) => {
     const store = defaultStore();
@@ -597,10 +597,10 @@ program
     } else if (action === "status") {
       const g = loadGmail();
       if (!g) return console.log("Gmail is not connected. To connect it: npx jev gmail connect --client <file>. docs/ACCOUNTS.md has the steps.");
-      console.log(`Connected: ${g.email}, read-only, since ${g.connectedAt.slice(0, 10)}. Token: ${store.get(GMAIL.refreshTokenItem) ? "in the Keychain" : "missing. Connect again: npx jev gmail connect"}`);
+      console.log(`Connected: ${g.email}, read-only, since ${g.connectedAt.slice(0, 10)}. Token: ${store.get(GMAIL.refreshTokenItem) ? `in ${storeWords()}` : "missing. Connect again: npx jev gmail connect"}`);
     } else if (action === "disconnect") {
       await disconnectGmail(store);
-      console.log("Gmail is disconnected: access was withdrawn at Google and the tokens are gone from the Keychain.");
+      console.log("Gmail is disconnected: access was withdrawn at Google and the tokens are gone from your secret store.");
     } else {
       console.log("The actions are: connect, status, disconnect");
     }
@@ -708,7 +708,7 @@ program
     const file = o.all ? PATHS.applications : o.manual ? PATHS.manual : PATHS.applied;
     if (o.open) {
       if (!existsSync(file)) return console.log(`Nothing to open yet. ${file} is created by the first discover run.`);
-      if (process.platform === "darwin") spawn("open", [file], { stdio: "ignore", detached: true, env: childEnv() }).unref();
+      openExternal(file);
       return console.log(file);
     }
     if (o.manual) {
