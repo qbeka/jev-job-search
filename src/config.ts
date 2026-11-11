@@ -510,6 +510,8 @@ export const STORE = {
   /** How long a command waits for another command's write to finish. */
   lockWaitMs: 15_000,
   lockPollMs: 25,
+  /** How many times replacing a file is tried again on Windows while another process has it open. */
+  renameRetries: 40,
   /** A write lock older than this was left by a process that hung. */
   lockStaleMs: 60_000,
   /** A run lock older than this was left behind: no run lasts this long. */
