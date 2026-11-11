@@ -30,9 +30,6 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: timing (temporary)
-        if: runner.os == 'Windows'
-        run: npx tsx tests/helpers/psTiming.ts
       - run: npx tsc --noEmit
       - run: npx vitest run
       # The secret store of each system, for real: one made-up item is kept, read back and removed.

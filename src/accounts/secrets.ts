@@ -106,6 +106,7 @@ export class LibsecretStore implements SecretStore {
 // Credential Manager has no command that reads a secret back, so the scripts call the same Win32 functions it is built on.
 const CRED = [
   "$ErrorActionPreference = 'Stop'",
+  "$ProgressPreference = 'SilentlyContinue'",
   "Add-Type -TypeDefinition @'",
   "using System;",
   "using System.Runtime.InteropServices;",
