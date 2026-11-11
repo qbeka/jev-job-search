@@ -33,7 +33,7 @@ const Trouble = z.object({ why: z.string(), count: z.number().default(1) });
 
 export const SiteNotes = z.object({
   /** By control signature: the kind of control, and the widget that draws it when the tool knows it. */
-  controls: z.record(ControlNote).default({}),
+  controls: z.record(z.string(), ControlNote).default({}),
   /** The site showed a sign-in or account page in front of its form. */
   signIn: z.boolean().default(false),
   /** The most pages one of its forms ran over. */
@@ -46,12 +46,12 @@ export const SiteNotes = z.object({
   forms: z.number().default(0),
   ready: z.number().default(0),
   /** Controls the tool could not set, by signature, with the last reason. This is the list of what to teach it next. */
-  trouble: z.record(Trouble).default({}),
+  trouble: z.record(z.string(), Trouble).default({}),
   updated: z.string().default(""),
 });
 export type SiteNotes = z.infer<typeof SiteNotes>;
 
-export const Knowledge = z.object({ version: z.literal(1).default(1), sites: z.record(SiteNotes).default({}) });
+export const Knowledge = z.object({ version: z.literal(1).default(1), sites: z.record(z.string(), SiteNotes).default({}) });
 export type Knowledge = z.infer<typeof Knowledge>;
 
 export const hostOf = (url: string): string => {

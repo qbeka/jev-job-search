@@ -31,7 +31,7 @@ export const BANK_INTENTS: Record<string, string> = {
 
 export type BankIntent = keyof typeof BANK_INTENTS;
 
-const Drafts = z.record(z.string());
+const Drafts = z.record(z.string(), z.string());
 
 /**
  * Starting drafts, one per intent, written by the candidate. They live in
