@@ -30,7 +30,7 @@ export function boardOf(job: { ats: string; url: string }): string {
 }
 const employerOf = (job: { company: string }) => job.company.trim().toLowerCase();
 
-const Pauses = z.record(z.object({ until: z.string(), why: z.string() }));
+const Pauses = z.record(z.string(), z.object({ until: z.string(), why: z.string() }));
 type Pauses = z.infer<typeof Pauses>;
 
 export function loadPauses(file = PATHS.boardPauses): Pauses {

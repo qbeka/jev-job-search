@@ -67,9 +67,9 @@ export const QueueEntry = z.object({
       decision: z.enum(["apply", "below_threshold", "skip"]),
       skipReason: z.string().nullable(),
       reasons: z.array(z.string()),
-      components: z.record(z.number()),
+      components: z.record(z.string(), z.number()),
       locationTier: z.string(),
-      answers: z.record(Answer),
+      answers: z.record(z.string(), Answer),
     })
     .nullable(),
   preFilterReason: z.string().nullable(),

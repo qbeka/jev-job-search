@@ -119,9 +119,9 @@ export const queryFor = (req: VerificationRequest) => `from:(${req.shape.senders
 
 const Used = z.object({
   /** Message ids already used, with when. */
-  consumed: z.record(z.string()).default({}),
+  consumed: z.record(z.string(), z.string()).default({}),
   /** Requests under way, by account: when the board was asked, and when the tool stops waiting. */
-  requests: z.record(z.object({ requestedAt: z.string(), expiresAt: z.string() })).default({}),
+  requests: z.record(z.string(), z.object({ requestedAt: z.string(), expiresAt: z.string() })).default({}),
 });
 type Used = z.infer<typeof Used>;
 
