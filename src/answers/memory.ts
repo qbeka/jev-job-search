@@ -73,7 +73,7 @@ const FormMemory = z.object({
   /** A hash of the open fields the resolution answered. */
   openKey: z.string(),
   /** The same hash per field, so an answer can be reused when only some of the open fields changed. */
-  fields: z.record(z.string()).default({}),
+  fields: z.record(z.string(), z.string()).default({}),
   company: z.string(),
   at: z.string(),
   resolution: Resolution,
@@ -81,7 +81,7 @@ const FormMemory = z.object({
 
 export const MemoryFile = z.object({
   version: z.literal(1).default(1),
-  forms: z.record(FormMemory).default({}),
+  forms: z.record(z.string(), FormMemory).default({}),
   answers: z.array(Remembered).default([]),
 });
 export type MemoryFile = z.infer<typeof MemoryFile>;

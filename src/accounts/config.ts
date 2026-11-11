@@ -107,9 +107,9 @@ const AccountState = z.object({
 export type AccountState = z.infer<typeof AccountState>;
 
 const StateFile = z.object({
-  accounts: z.record(AccountState).default({}),
+  accounts: z.record(z.string(), AccountState).default({}),
   /** Accounts the tool made, per day, to hold the person's daily limit. */
-  created: z.record(z.number().int()).default({}),
+  created: z.record(z.string(), z.number().int()).default({}),
 });
 export type StateFile = z.infer<typeof StateFile>;
 

@@ -33,14 +33,14 @@ export const NoulAnswer = z.object({ type: z.literal("noul"), noul: z.number().m
 export const ChoiceAnswer = z.object({
   type: z.literal("choice"),
   choice: z.string(),
-  probabilities: z.record(z.number()),
+  probabilities: z.record(z.string(), z.number()),
   confidence: z.number().min(0).max(1),
 });
 export const ScoreAnswer = z.object({
   type: z.literal("score"),
   score: z.number(),
-  legend: z.record(z.string()),
-  probabilities: z.record(z.number()),
+  legend: z.record(z.string(), z.string()),
+  probabilities: z.record(z.string(), z.number()),
   confidence: z.number().min(0).max(1),
 });
 export const Answer = z.discriminatedUnion("type", [NoulAnswer, ChoiceAnswer, ScoreAnswer]);
@@ -53,7 +53,7 @@ export const DecisionResponse = z.object({
   id: z.string().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
-  answers: z.record(Answer),
+  answers: z.record(z.string(), Answer),
   usage: z
     .object({
       input_tokens: z.number().optional(),

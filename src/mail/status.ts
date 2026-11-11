@@ -77,7 +77,7 @@ export type Placed = { mail: MailBrief; kind: Response | null; entry: QueueEntry
 
 const Seen = z.object({
   /** Emails already looked at, so each is read once. */
-  seen: z.record(z.string()).default({}),
+  seen: z.record(z.string(), z.string()).default({}),
   /** Emails the tool could not place with certainty, for the person to confirm. */
   review: z.array(z.object({ id: z.string(), from: z.string(), subject: z.string(), receivedAt: z.number(), kind: Response.nullable(), jobIds: z.array(z.string()), why: z.string() })).default([]),
 });

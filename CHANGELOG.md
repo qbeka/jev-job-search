@@ -20,6 +20,8 @@ changed for a person using the tool and what changed for a contributor.
   sponsorship. Profiles without it work as before.
 
 ### Changed
+- zod is now version 4, which clears the high advisory GHSA-mrhx-c7xc-m3w5 that
+  failed the CI audit step on `main`. No change for a person using the tool.
 - A run takes at most three roles from one employer, never two in a row, and
   waits eight minutes between two applications to the same employer.
   Submissions to Greenhouse are spaced 90 seconds apart.
