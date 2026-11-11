@@ -1,18 +1,20 @@
 /**
- * What JEV leaves open goes to Claude: questions that need writing, fields it
- * was unsure of, and values the page refused. Claude Code runs headless with
- * no tools, reads the candidate's facts and the open fields, and returns one
- * JSON object. It may also say the job should not be applied to, with a reason.
+ * What JEV leaves open goes to the writer: questions that need writing, fields it
+ * was unsure of, and values the page refused. By default that is Claude Code, run
+ * headless with no tools; `writerBackend` in the config names the others. The writer
+ * reads the candidate's facts and the open fields, and returns one JSON object. It
+ * may also say the job should not be applied to, with a reason.
  */
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { z } from "zod";
-import { childEnv, DOCUMENTS, PATHS, WRITER, writerBackend } from "../config.js";
+import { childEnv, DOCUMENTS, PATHS, WRITER, writerApi, writerBackend, writerModel } from "../config.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import type { Profile } from "../profile/schema.js";
 import { BANK_DRAFTS, BANK_INTENTS } from "./bank.js";
 import { answerContext, jobContext } from "./context.js";
 import { fingerprintOf, Resolution, type OpenField } from "./memory.js";
+import { registerSecret } from "../util/redact.js";
 
 export { Resolution, type OpenField };
 
@@ -126,18 +128,26 @@ export async function logNotes(profile: Profile, entries: QueueEntry[]): Promise
 
 export type WriterCall = { at: string; purpose: "resolve" | "log" | "tailor"; jobId: string; model: string; inputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; outputTokens: number; costUsd: number; ms: number };
 
-/** What the writer has used in this process. costUsd is what the calls would cost at API prices; on a Claude subscription they draw on the plan instead. */
+/** What the writer has used in this process. costUsd is what the calls would cost at API prices; on a subscription they draw on the plan instead. */
 export const writerUsage = { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
 type Usage = { input_tokens?: number | undefined; cache_creation_input_tokens?: number | undefined; cache_read_input_tokens?: number | undefined; output_tokens?: number | undefined };
 type Envelope = { result?: string; is_error?: boolean; total_cost_usd?: number; duration_ms?: number; usage?: Usage | undefined };
+
+/** The writer as it is written in the usage log and in a cache key. For Claude this is the model's name, as it always was. */
+export function writerLabel(): string {
+  const backend = writerBackend();
+  if (backend === "codex") return `codex:${writerModel(backend) || "default"}`;
+  if (backend === "openai") return `openai:${writerModel(backend)}`;
+  return writerModel(backend);
+}
 
 function recordWriterCall(envelope: Envelope, meta: { purpose: WriterCall["purpose"]; jobId: string }): void {
   const u = envelope.usage ?? {};
   const call: WriterCall = {
     at: new Date().toISOString(),
     ...meta,
-    model: WRITER.model,
+    model: writerLabel(),
     inputTokens: u.input_tokens ?? 0,
     cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
     cacheReadTokens: u.cache_read_input_tokens ?? 0,
@@ -198,7 +208,7 @@ async function callApi(prompt: string, system: string, meta: { purpose: WriterCa
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": WRITER.apiVersion },
     body: JSON.stringify({
-      model: WRITER.model,
+      model: writerModel("api"),
       max_tokens: WRITER.maxOutputTokens,
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: prompt }],
@@ -217,15 +227,43 @@ async function callApi(prompt: string, system: string, meta: { purpose: WriterCa
   return text;
 }
 
-function callWriter(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
-  if (writerBackend() === "api") return callApi(prompt, system, meta);
+/** The shape of a chat completions reply, as far as the writer reads it. OpenRouter adds what the call cost. */
+const ChatReply = z.object({
+  choices: z.array(z.object({ message: z.object({ content: z.string().nullable().optional() }) })).min(1),
+  usage: z.object({ prompt_tokens: z.number().optional(), completion_tokens: z.number().optional(), cost: z.number().optional() }).optional(),
+});
+
+/** Any service that speaks OpenAI's chat completions, at WRITER_BASE_URL, billed to WRITER_API_KEY. The model has no tools: none are offered. */
+async function callOpenAi(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
+  const { baseUrl, key } = writerApi();
+  if (key) registerSecret(key); // a key of any shape, so nothing the tool prints can carry it
+  const started = Date.now();
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
+    body: JSON.stringify({ model: writerModel("openai"), messages: [{ role: "system", content: system }, { role: "user", content: prompt }] }),
+    signal: AbortSignal.timeout(WRITER.timeoutMs),
+  });
+  const body: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // The error body never carries the key; the message is enough and nothing else is shown.
+    const error = typeof body === "object" && body && "error" in body ? (body as { error?: unknown }).error : undefined;
+    const message = typeof error === "string" ? error : typeof error === "object" && error ? String((error as { message?: unknown }).message ?? "") : "";
+    throw new Error(`the writer's API answered ${res.status}${message ? `: ${message.slice(0, 200)}` : ""}`);
+  }
+  const reply = ChatReply.parse(body);
+  const text = reply.choices[0]?.message.content ?? "";
+  if (!text) throw new Error("the writer's API returned no text");
+  recordWriterCall({ result: text, usage: { input_tokens: reply.usage?.prompt_tokens, output_tokens: reply.usage?.completion_tokens }, total_cost_usd: reply.usage?.cost ?? 0, duration_ms: Date.now() - started }, meta);
+  return text;
+}
+
+/** One headless command: the prompt goes in on standard input, and what it printed comes back. */
+function runHeadless(command: string, args: string[], input: string, env: Record<string, string>, installed: string): Promise<{ out: string; ms: number }> {
   return new Promise((resolve, reject) => {
     mkdirSync(WRITER.cwd, { recursive: true });
-    const child = spawn(
-      WRITER.command,
-      ["-p", "--model", WRITER.model, "--effort", effortFor(meta.purpose), "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", system],
-      { stdio: ["pipe", "pipe", "pipe"], cwd: WRITER.cwd, env: childEnv(WRITER.env) },
-    );
+    const started = Date.now();
+    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], cwd: WRITER.cwd, env: childEnv(env) });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
@@ -236,22 +274,64 @@ function callWriter(prompt: string, system: string, meta: { purpose: WriterCall[
     child.stderr.on("data", (d: Buffer) => (err += d.toString()));
     child.on("error", (e) => {
       clearTimeout(timer);
-      reject(new Error(`could not run ${WRITER.command}: ${e.message}. Claude Code must be installed and logged in.`));
+      reject(new Error(`could not run ${command}: ${e.message}. ${installed}`));
     });
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code !== 0) return reject(new Error(`the writer exited with ${code}: ${err.slice(0, 300)}`));
-      try {
-        const envelope = JSON.parse(out) as Envelope;
-        recordWriterCall(envelope, meta);
-        if (envelope.is_error || typeof envelope.result !== "string") return reject(new Error(`the writer failed: ${String(envelope.result).slice(0, 300)}`));
-        resolve(envelope.result);
-      } catch {
-        reject(new Error("the writer's output was not JSON"));
-      }
+      resolve({ out, ms: Date.now() - started });
     });
-    child.stdin.end(prompt);
+    child.stdin.on("error", () => undefined); // a command that died early is reported by its exit, not by the closed pipe
+    child.stdin.end(input);
   });
+}
+
+/**
+ * The arguments for one headless Codex call. Codex has no switch for "no tools", so everything that
+ * could act is turned off one by one: its shell tool and web search are off, the person's own config
+ * (and with it their MCP servers) and rules are not loaded, no AGENTS.md is read, nothing is kept,
+ * and what is left runs in a read-only sandbox in an empty folder.
+ */
+export function codexArgs(effort: string, model: string): string[] {
+  return [
+    "exec", "-", "--skip-git-repo-check", "--sandbox", "read-only", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--color", "never",
+    "-c", "features.shell_tool=false", "-c", 'web_search="disabled"', "-c", "project_doc_max_bytes=0", "-c", `model_reasoning_effort="${effort}"`,
+    ...(model ? ["--model", model] : []),
+  ];
+}
+
+/** Codex takes one prompt and no separate system prompt, so the rules and the candidate come first and the form after them. */
+export const codexPrompt = (prompt: string, system: string): string => `${system}\n\nThe form to finish. Reply with the JSON object and nothing else.\n${prompt}`;
+
+async function callCodex(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
+  const { out, ms } = await runHeadless(WRITER.codex.command, codexArgs(effortFor(meta.purpose), writerModel("codex")), codexPrompt(prompt, system), {}, "The Codex CLI must be installed and signed in (run `codex` once).");
+  const text = out.trim();
+  if (!text) throw new Error("the writer printed nothing");
+  // Codex prints its answer and no token counts; the call is on the person's plan.
+  recordWriterCall({ result: text, duration_ms: ms }, meta);
+  return text;
+}
+
+async function callClaudeCode(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
+  const args = ["-p", "--model", writerModel("claude-code"), "--effort", effortFor(meta.purpose), "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", system];
+  const { out } = await runHeadless(WRITER.command, args, prompt, WRITER.env, "Claude Code must be installed and logged in.");
+  let envelope: Envelope;
+  try {
+    envelope = JSON.parse(out) as Envelope;
+  } catch {
+    throw new Error("the writer's output was not JSON");
+  }
+  recordWriterCall(envelope, meta);
+  if (envelope.is_error || typeof envelope.result !== "string") throw new Error(`the writer failed: ${String(envelope.result).slice(0, 300)}`);
+  return envelope.result;
+}
+
+function callWriter(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
+  const backend = writerBackend();
+  if (backend === "api") return callApi(prompt, system, meta);
+  if (backend === "openai") return callOpenAi(prompt, system, meta);
+  if (backend === "codex") return callCodex(prompt, system, meta);
+  return callClaudeCode(prompt, system, meta);
 }
 
 /** One plain writer call with a system prompt, for checks. Recorded like any other call. */

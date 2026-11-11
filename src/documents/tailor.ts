@@ -8,8 +8,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { DOCUMENTS, PATHS, WRITER } from "../config.js";
-import { candidateContext, contextFingerprint, runWriter } from "../answers/resolve.js";
+import { DOCUMENTS, PATHS } from "../config.js";
+import { candidateContext, contextFingerprint, runWriter, writerLabel } from "../answers/resolve.js";
 import { jobContext } from "../answers/context.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import type { Profile } from "../profile/schema.js";
@@ -171,7 +171,7 @@ export function documentsFor(jobId: string, profile?: Profile): Documents | null
   }
 }
 
-const tailorFingerprint = (profile: Profile) => hashOf(`${contextFingerprint(profile)}|${SYSTEM}|${WRITER.model}`);
+const tailorFingerprint = (profile: Profile) => hashOf(`${contextFingerprint(profile)}|${SYSTEM}|${writerLabel()}`);
 
 const parse = (text: string): Tailored => {
   const start = text.indexOf("{");

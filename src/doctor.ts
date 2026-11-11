@@ -2,12 +2,12 @@
  * `doctor`: checks everything a run needs and names the one thing to do next.
  * The setup skill runs it after every step, so a person never has to work out
  * what is missing. With `online` it also makes one tiny JEV call and one tiny
- * Claude Code call to prove the key and the sign-in work.
+ * writer call to prove the key and the sign-in work.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { BROWSER, childEnv, DOCTOR, GMAIL, PATHS, ROOT, WRITER, writerBackend } from "./config.js";
+import { BROWSER, childEnv, DOCTOR, GMAIL, PATHS, ROOT, WRITER, writerApi, writerBackend, writerModel } from "./config.js";
 import { loadAccounts } from "./accounts/config.js";
 import { defaultStore, type SecretStore } from "./accounts/secrets.js";
 import { loadGmail } from "./mail/gmail.js";
@@ -39,14 +39,30 @@ export function checkChrome(file: string = BROWSER.chromePath): Check {
   return { name: "Google Chrome", ok: existsSync(file), detail: existsSync(file) ? "installed" : `not found at ${file}`, fix: "Install Google Chrome from https://www.google.com/chrome, or set BROWSER.chromePath in src/config.ts" };
 }
 
-/** How Claude is reached: Claude Code on the person's subscription, or the Claude API on their own key. */
+/** Who writes: Claude Code on the person's subscription by default, or the backend WRITER_BACKEND names. */
 export function checkClaude(): Check {
-  if (writerBackend() === "api") {
-    return { name: "Claude", ok: true, detail: `the Claude API, billed to ANTHROPIC_API_KEY in .env (${WRITER.model})`, fix: "" };
+  let backend;
+  try {
+    backend = writerBackend();
+    if (backend === "openai") writerModel(backend);
+  } catch (err) {
+    return { name: "Writer", ok: false, detail: err instanceof Error ? err.message : String(err), fix: "Correct WRITER_BACKEND and WRITER_MODEL in .env, or leave WRITER_BACKEND empty to use Claude Code" };
+  }
+  if (backend === "api") {
+    return { name: "Claude", ok: true, detail: `the Claude API, billed to ANTHROPIC_API_KEY in .env (${writerModel(backend)})`, fix: "" };
+  }
+  if (backend === "openai") {
+    const { baseUrl, key } = writerApi();
+    return { name: "Writer", ok: true, detail: `${writerModel(backend)} at ${baseUrl}${key ? ", billed to WRITER_API_KEY in .env" : ", with no key"}`, fix: "" };
+  }
+  if (backend === "codex") {
+    const r = spawnSync(WRITER.codex.command, ["--version"], { encoding: "utf8", env: childEnv() });
+    const ok = r.status === 0;
+    return { name: "Codex", ok, detail: ok ? `${r.stdout.trim()} on your ChatGPT plan${writerModel(backend) ? ` (${writerModel(backend)})` : ""}` : "the codex command was not found", fix: "Install the Codex CLI and run `codex` once to sign in, or leave WRITER_BACKEND empty in .env to use Claude Code" };
   }
   const r = spawnSync(WRITER.command, ["--version"], { encoding: "utf8", env: childEnv() });
   const ok = r.status === 0;
-  return { name: "Claude", ok, detail: ok ? `Claude Code ${r.stdout.trim()} on your subscription` : "the claude command was not found", fix: "Install Claude Code from https://code.claude.com and run `claude` once to sign in, or put ANTHROPIC_API_KEY in .env to use the Claude API instead" };
+  return { name: "Claude", ok, detail: ok ? `Claude Code ${r.stdout.trim()} on your subscription` : "the claude command was not found", fix: "Install Claude Code from https://code.claude.com and run `claude` once to sign in, or put ANTHROPIC_API_KEY in .env to use the Claude API instead. To write with another model, set WRITER_BACKEND in .env (docs/SETUP.md)" };
 }
 
 export function checkKey(key = process.env.OPENROUTER_API_KEY ?? ""): Check {
@@ -132,22 +148,27 @@ export async function checkKeyOnline(): Promise<Check> {
   }
 }
 
-/** One tiny Claude call: proves the sign-in or the key works and the writer's model is available. */
+/** One tiny writer call: proves the sign-in or the key works and the writer's model is available. */
 export async function checkClaudeOnline(): Promise<Check> {
-  if (writerBackend() === "api") {
+  const backend = writerBackend();
+  if (backend !== "claude-code") {
+    const [name, detail, fix] =
+      backend === "api" ? ["Claude answers", `the Claude API, ${writerModel(backend)}`, "Check ANTHROPIC_API_KEY in .env at https://console.anthropic.com"]
+      : backend === "codex" ? ["Codex answers", "Codex signed in", "Run `codex` once in a terminal and sign in. The tool needs a Codex CLI recent enough to know `codex exec --ephemeral --ignore-user-config`"]
+      : ["Writer answers", `${writerModel(backend)} at ${writerApi().baseUrl}`, "Check WRITER_BASE_URL, WRITER_MODEL and WRITER_API_KEY in .env"];
     try {
       const text = await askWriter("ok?", "Reply with the single word ok.");
-      return { name: "Claude answers", ok: /ok/i.test(text), detail: `the Claude API, ${WRITER.model}`, fix: "Check ANTHROPIC_API_KEY in .env at https://console.anthropic.com" };
+      return { name, ok: /ok/i.test(text), detail, fix };
     } catch (err) {
-      return { name: "Claude answers", ok: false, detail: (err instanceof Error ? err.message : String(err)).slice(0, 200), fix: "Check ANTHROPIC_API_KEY in .env at https://console.anthropic.com" };
+      return { name, ok: false, detail: (err instanceof Error ? err.message : String(err)).slice(0, 200), fix };
     }
   }
   const fix = "Run `claude` once in a terminal and sign in";
-  const r = spawnSync(WRITER.command, ["-p", "--model", WRITER.model, "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", "Reply with the single word ok."], { input: "ok?", encoding: "utf8", timeout: DOCTOR.claudeTimeoutMs, env: childEnv(WRITER.env) });
+  const r = spawnSync(WRITER.command, ["-p", "--model", writerModel(backend), "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", "Reply with the single word ok."], { input: "ok?", encoding: "utf8", timeout: DOCTOR.claudeTimeoutMs, env: childEnv(WRITER.env) });
   try {
     const envelope = JSON.parse(r.stdout) as { is_error?: boolean; result?: string };
     const ok = r.status === 0 && !envelope.is_error;
-    return { name: "Claude answers", ok, detail: ok ? `Claude Code signed in, ${WRITER.model} at ${WRITER.effort} effort` : String(envelope.result).slice(0, 200), fix };
+    return { name: "Claude answers", ok, detail: ok ? `Claude Code signed in, ${writerModel(backend)} at ${WRITER.effort} effort` : String(envelope.result).slice(0, 200), fix };
   } catch {
     return { name: "Claude answers", ok: false, detail: (r.stderr || "no answer").slice(0, 200), fix };
   }

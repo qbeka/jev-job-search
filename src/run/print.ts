@@ -1,5 +1,6 @@
 /** How a run shows its work on the terminal: one block per form, one line per field. */
 import type { FillReport } from "../browser/report.js";
+import { writerName } from "../config.js";
 import type { QueueEntry } from "../jobs/queue.js";
 
 const headline = (r: FillReport) => {
@@ -11,7 +12,7 @@ const headline = (r: FillReport) => {
 
 export function printFill(r: FillReport): void {
   console.log(`\n== ${r.company} | ${r.title} [${r.jobId}] ${headline(r)} in ${r.seconds.toFixed(1)}s${r.page > 1 ? `, ${r.page} pages` : ""}, JEV $${r.jevCostUsd.toFixed(4)}`);
-  if (r.resolution) console.log(`   ${r.writerCalled === false ? "Memory" : "Claude"}: ${r.resolution.verdict}${r.resolution.reason ? `, ${r.resolution.reason}` : ""} (${r.resolution.answers.length} answers${r.recalled ? `, ${r.recalled} from memory` : ""}${r.writerCalled === false ? ", Claude was not asked" : ""})`);
+  if (r.resolution) console.log(`   ${r.writerCalled === false ? "Memory" : writerName().name}: ${r.resolution.verdict}${r.resolution.reason ? `, ${r.resolution.reason}` : ""} (${r.resolution.answers.length} answers${r.recalled ? `, ${r.recalled} from memory` : ""}${r.writerCalled === false ? ", Claude was not asked" : ""})`);
   console.log(`   ${r.url}`);
   if (r.reason) console.log(`   ${r.reason}`);
   for (const f of [...r.earlier, ...r.fields]) console.log(`   ${f.required ? "*" : " "} ${f.action.padEnd(6)} ${f.label.slice(0, 80).padEnd(80)} ${f.shown.slice(0, 70)}${f.note ? `  (${f.note})` : ""}`);
