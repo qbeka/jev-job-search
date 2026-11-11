@@ -1,0 +1,110 @@
+{
+  "source": "JobsWithPay",
+  "total": 4098,
+  "capped": false,
+  "search_url": "https://jobswithpay.com/jobs?family=data_eng&family=data_science&family=inference_systems&family=infra_cloud&family=ml_ai&family=security&family=software&seniority=entry&seniority=intern",
+  "next_cursor": "t1794286800000000_375925",
+  "jobs": [
+    {
+      "id": "377293",
+      "title": "Site Reliability Engineer - Intern (Data Platform, Computer Platform) - 2027 Start",
+      "company": "ByteDance",
+      "locations": [
+        "San Jose, California, United States of America"
+      ],
+      "pay": null,
+      "posted": null,
+      "last_checked": "2026-11-11",
+      "url": "https://jobswithpay.com/jobs/377293-site-reliability-engineer-intern-data-platform-computer-platform-2027-start",
+      "apply_url": "https://joinbytedance.com/search/7678104426079799557",
+      "visa_sponsor": false
+    },
+    {
+      "id": "377088",
+      "title": "Calibration and Equipment Systems Engineer I",
+      "company": "Penumbra",
+      "locations": [
+        "Alameda, CA"
+      ],
+      "pay": "$70K–$90K / year",
+      "posted": "2026-11-10",
+      "last_checked": "2026-11-11",
+      "url": "https://jobswithpay.com/jobs/377088-calibration-and-equipment-systems-engineer-i-penumbra",
+      "apply_url": "https://jobs.lever.co/penumbrainc/5602dc11-6706-465f-9cfd-b97bbcb496e6/apply",
+      "visa_sponsor": false
+    },
+    {
+      "id": "22518",
+      "title": "Forward Deployed Engineer - New Grad",
+      "company": "Chalk",
+      "locations": [
+        "SF",
+        "NY"
+      ],
+      "pay": "$170K – $180K • Offers Equity",
+      "posted": "2026-11-10",
+      "last_checked": "2026-11-11",
+      "url": "https://jobswithpay.com/jobs/22518-forward-deployed-engineer-new-grad-chalk",
+      "apply_url": "https://jobs.ashbyhq.com/chalk/927c74a5-1b40-490d-b3be-a29baec4db6f/application",
+      "visa_sponsor": false
+    },
+    {
+      "id": "380801",
+      "title": "Middleware Software Engineer Intern - Summer 2027",
+      "company": "Skydio",
+      "locations": [
+        "San Mateo, California, United States"
+      ],
+      "pay": null,
+      "posted": "2026-11-10",
+      "last_checked": "2026-11-11",
+      "url": "https://jobswithpay.com/jobs/380801-middleware-software-engineer-intern-summer-2027-skydio",
+      "apply_url": "https://jobs.ashbyhq.com/skydio/c85af510-9fe4-4167-a914-c3ab344bef03/application",
+      "visa_sponsor": false
+    },
+    {
+      "id": "374670",
+      "title": "2027 New Grad Information Security Engineer",
+      "company": "Anduril Industries",
+      "locations": [
+        "Costa Mesa, California, United States",
+        "Costa Mesa, CA (OC-00)"
+      ],
+      "pay": "$88K–$117K / year",
+      "posted": "2026-11-10",
+      "last_checked": "2026-11-10",
+      "url": "https://jobswithpay.com/jobs/374670-2027-new-grad-information-security-engineer-anduril-industries",
+      "apply_url": "https://boards.greenhouse.io/andurilindustries/jobs/5270839007?gh_jid=5270839007",
+      "visa_sponsor": false
+    },
+    {
+      "id": "375527",
+      "title": "Spring 2027: Product Test Engineering Co-op (January through June)",
+      "company": "SharkNinja",
+      "locations": [
+        "Needham, MA, United States",
+        "MA - Needham"
+      ],
+      "pay": "$28–$34 / hour",
+      "posted": "2026-11-10",
+      "last_checked": "2026-11-10",
+      "url": "https://jobswithpay.com/jobs/375527-spring-2027-product-test-engineering-co-op-january-through-june-sharkninja",
+      "apply_url": "https://job-boards.greenhouse.io/sharkninjaoperatingllc/jobs/4726209006",
+      "visa_sponsor": false
+    },
+    {
+      "id": "0",
+      "title": "Site Reliability Engineer - Intern (Data Platform, Computer Platform) - 2027 Start",
+      "company": "ByteDance",
+      "locations": [
+        "San Jose, California, United States of America"
+      ],
+      "pay": null,
+      "posted": null,
+      "last_checked": "2026-11-11",
+      "url": "https://jobswithpay.com/jobs/377293-site-reliability-engineer-intern-data-platform-computer-platform-2027-start",
+      "apply_url": null,
+      "visa_sponsor": false
+    }
+  ]
+}

@@ -13,6 +13,7 @@ posting found by three lists is rated once.
 | negarprh/Canadian-Tech-Internships-2027 | README markdown table, badge links, `MMM DD, YYYY` dates, `↳` for repeated companies, 🔒 closed | 450+ rows, most Workday | Canada only. |
 | vanshb03/Summer2027-Internships | README table, `<a href>` links, `MMM DD` dates, 🛂 and 🇺🇸 flags | About 200 rows | US and Canada. |
 | michelleokolie/canada-tech-internships-summer-2027 | README table, `<a href>` links | Small | Canada only. |
+| JobsWithPay | Public search API `jobswithpay.com/api/v1/jobs/search` (no key), intern and entry-level tech jobs, 40 a page, up to 15 pages | Each job is read from the company's own board and checked every day | Keeps `apply_url`, the posting on the company board, so a job dedupes with the lists and the board polling. `visa_sponsor` feeds the sponsorship pre-filter. |
 | Greenhouse boards | `boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true` | Live | Polled for every company the lists mention plus the seed list in `src/sources/companies.ts`. Full description included. |
 | Lever boards | `api.lever.co/v0/postings/{slug}?mode=json` | Live | Same. |
 | Ashby boards | `api.ashbyhq.com/posting-api/job-board/{slug}` | Live | Same. Includes `descriptionPlain`. |
