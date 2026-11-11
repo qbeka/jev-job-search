@@ -8,6 +8,8 @@
  */
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { randomInt } from "node:crypto";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { ACCOUNTS, childEnv } from "../config.js";
 import { powershellArgs, powershellPath } from "../util/platform.js";
 import { Secret } from "../util/redact.js";
@@ -215,8 +217,8 @@ export function generatePassword(): Secret {
 }
 
 let hasSecretTool: boolean | null = null;
-/** Whether `secret-tool` is installed: it has no version flag, so it is asked something harmless and only its absence counts. Asked once per process. */
-const secretToolInstalled = (): boolean => (hasSecretTool ??= !spawnSync("secret-tool", ["search", "service", ACCOUNTS.keychainService], { stdio: "ignore", env: childEnv() }).error);
+/** Whether `secret-tool` is on the search path. The keyring itself is not touched to find out. Looked up once per process. */
+const secretToolInstalled = (): boolean => (hasSecretTool ??= (process.env.PATH ?? "").split(path.delimiter).some((dir) => dir && existsSync(path.join(dir, "secret-tool"))));
 
 /** What kind of store this machine has: the system's own, or, on a Linux machine without `secret-tool`, the environment. */
 export function storeKind(platform: NodeJS.Platform = process.platform, secretTool: () => boolean = secretToolInstalled): "keychain" | "vault" | "libsecret" | "env" {
