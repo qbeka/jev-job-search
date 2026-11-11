@@ -3,7 +3,8 @@
 Read `README.md` first, then `docs/ARCHITECTURE.md`. The CLI is the product:
 `discover` builds the queue, `apply` fills, resolves, verifies and submits.
 `src/run/pipeline.ts` is the loop itself. The skills in `.claude/skills/`
-run it with a person in the loop: `/setup`, `/discover`, `/apply`,
+run it with a person in the loop (`AGENTS.md` points Codex and other agents
+at the same skills): `/setup`, `/discover`, `/apply`,
 `/accounts`, `/daily`, `/resume`, `/status`, `/inbox`, `/report`,
 `/profile`. A person using
 the tool types those and never `npx`: when you add a command, add the
@@ -102,16 +103,23 @@ doctor` says what is in place and what to do next.
   `src/config.ts` and nowhere else. Everything printed goes through
   `scrub` (`src/util/redact.ts`), links are kept as `safeUrl`, and every
   child process is started with `childEnv()`, an allow-list that holds no
-  key. A test fails on a spawn without it. Keep it that way.
-- **JEV decides, code acts, Claude writes.** Anything that is a typed
+  key. A test fails on a spawn without it. Keep it that way. The keys the
+  writer may use (`ANTHROPIC_API_KEY`, `WRITER_API_KEY`) are read for the
+  call that needs them and travel only in that request's header.
+- **JEV decides, code acts, the writer writes.** Anything that is a typed
   question (which field, which option, which page, how good a fit) goes
   through JEV with criteria written as definitions. Free text and the fields
-  JEV was unsure of are Claude's job, only from the facts in the profile.
-  When the CLI needs Claude it runs Claude Code headless on the person's
-  subscription, or, with `ANTHROPIC_API_KEY` in `.env`, calls the Claude
-  Messages API directly (`src/answers/resolve.ts`), on the model and effort
-  in `WRITER` in `src/config.ts`, with no tools. Those are the only two
-  ways; no other model API is called for writing.
+  JEV was unsure of are the writer's job, only from the facts in the profile.
+  The writer is Claude unless the person names another: Claude Code headless
+  on their subscription, or, with `ANTHROPIC_API_KEY` in `.env`, the Claude
+  Messages API, on the model and effort in `WRITER` in `src/config.ts`.
+  `WRITER_BACKEND` in `.env` picks the Codex CLI on the person's ChatGPT
+  plan, or a service that speaks OpenAI's chat completions
+  (`src/answers/resolve.ts`). Those are the only ways, the tool never picks
+  one on its own, and every writer runs with no tools: an API is offered
+  none, and Codex is started with its shell and web search off, the person's
+  config and MCP servers left out, in a read-only sandbox in an empty folder
+  (`codexArgs`). Never loosen those arguments.
 - **Nothing about one candidate in source.** Years, cities, drafts and
   phrasing come from the profile, `data/bank.json` and
   `data/voice.local.md`.

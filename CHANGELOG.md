@@ -12,6 +12,13 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Added
+- Other writers. `WRITER_BACKEND=codex` in `.env` writes with the Codex CLI on
+  your ChatGPT plan, and `WRITER_BACKEND=openai` with any service that speaks
+  OpenAI's chat completions (OpenAI, OpenRouter, a model on your own machine),
+  on the model in `WRITER_MODEL`. Claude Code stays the default, and every
+  writer runs with no tools. `docs/SETUP.md` has the table.
+- `AGENTS.md`, so Codex and other coding agents follow the same rules and
+  skills as Claude Code. Codex finds the skills under `.agents/skills`.
 - `workAuthorization.authorizedWithSponsorshipLater` in the profile: countries
   where you may work now or by your start date but will need sponsorship
   later, such as the United States on F-1 OPT or STEM OPT. Forms for a job

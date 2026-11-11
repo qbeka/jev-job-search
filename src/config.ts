@@ -265,7 +265,8 @@ export const BROWSER = {
 /**
  * The writer for what JEV cannot type: open questions, and fields it was unsure of.
  * By default it is Claude Code itself, run headless, so it uses the person's own subscription and
- * no API key. With ANTHROPIC_API_KEY in .env the Claude API is called directly instead.
+ * no API key. With ANTHROPIC_API_KEY in .env the Claude API is called directly instead. A person
+ * who works with another model picks it with WRITER_BACKEND: see `writerBackend` below.
  */
 export const WRITER = {
   command: "claude",
@@ -297,6 +298,17 @@ export const WRITER = {
    * Check them against https://www.anthropic.com/pricing when the model changes.
    */
   apiPricesPerMillion: { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
+  /**
+   * The Codex CLI, run headless on the person's ChatGPT plan (WRITER_BACKEND=codex). An empty model
+   * means the one Codex itself is set to; WRITER_MODEL in .env names another.
+   */
+  codex: { command: "codex", model: "" },
+  /**
+   * Any service that speaks OpenAI's chat completions (WRITER_BACKEND=openai): OpenAI, OpenRouter,
+   * Gemini's compatible endpoint, or a model on this machine. WRITER_BASE_URL in .env replaces the
+   * address, and WRITER_MODEL names the model; there is no default one.
+   */
+  openai: { baseUrl: "https://api.openai.com/v1" },
 } as const;
 
 /** Tailored resumes and cover letters, written per job from the profile and rendered to PDF by the runner's Chrome. */
@@ -447,7 +459,7 @@ export const ASSIST = {
 
 /** What a child process may inherit from the environment. Keys and passwords are not on the list, so no child ever sees one. */
 export const CHILD_ENV = {
-  allow: ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY"],
+  allow: ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY"],
 } as const;
 
 /** The environment for a child process: the allowed names only, plus what the caller adds on purpose. */
@@ -475,17 +487,45 @@ export const REPORT = {
   statuses: ["applied", "needs_review", "queued", "skipped", "blocked", "failed"],
 } as const;
 
-export type WriterBackend = "claude-code" | "api";
+export type WriterBackend = "claude-code" | "api" | "codex" | "openai";
+const WRITER_BACKENDS: readonly WriterBackend[] = ["claude-code", "api", "codex", "openai"];
 
 /**
- * How Claude is reached. Claude Code runs headless on the person's own subscription and is the
- * default. With ANTHROPIC_API_KEY in .env the Claude API is called directly and billed to that key.
- * WRITER_BACKEND=claude-code in .env keeps Claude Code even when a key is present.
+ * Who writes. Claude Code runs headless on the person's own subscription and is the default. With
+ * ANTHROPIC_API_KEY in .env the Claude API is called directly and billed to that key.
+ * WRITER_BACKEND in .env picks one on purpose: "claude-code", "api" (the Claude API), "codex" (the
+ * Codex CLI on a ChatGPT plan) or "openai" (any service that speaks OpenAI's chat completions).
+ * A name that is none of these is a mistake in .env, and is said so instead of guessed around.
  */
 export function writerBackend(): WriterBackend {
-  const asked = (process.env.WRITER_BACKEND ?? "").trim();
-  if (asked === "claude-code" || asked === "api") return asked;
+  const asked = (process.env.WRITER_BACKEND ?? "").trim().toLowerCase();
+  if (asked) {
+    if ((WRITER_BACKENDS as readonly string[]).includes(asked)) return asked as WriterBackend;
+    throw new Error(`WRITER_BACKEND in .env is "${asked}". It can be ${WRITER_BACKENDS.join(", ")}, or empty.`);
+  }
   return process.env.ANTHROPIC_API_KEY ? "api" : "claude-code";
+}
+
+/** The model the writer runs on: WRITER_MODEL from .env when set, else the backend's own. Empty for Codex means the model Codex is set to. */
+export function writerModel(backend: WriterBackend = writerBackend()): string {
+  const asked = (process.env.WRITER_MODEL ?? "").trim();
+  if (asked) return asked;
+  if (backend === "codex") return WRITER.codex.model;
+  if (backend === "openai") throw new Error("WRITER_BACKEND=openai needs WRITER_MODEL in .env: the name of the model at that service.");
+  return WRITER.model;
+}
+
+/** Where WRITER_BACKEND=openai sends its calls, and the key it sends. A model on this machine needs no key. */
+export function writerApi(): { baseUrl: string; key: string } {
+  return { baseUrl: (process.env.WRITER_BASE_URL ?? "").trim().replace(/\/+$/, "") || WRITER.openai.baseUrl, key: (process.env.WRITER_API_KEY ?? "").trim() };
+}
+
+/** What the writer is called in what the tool prints, and whether its calls are billed per token to a key. */
+export function writerName(backend: WriterBackend = writerBackend()): { name: string; how: string; billed: boolean } {
+  if (backend === "api") return { name: "Claude", how: "the Claude API, billed to your key", billed: true };
+  if (backend === "codex") return { name: "Codex", how: "Codex on your ChatGPT plan", billed: false };
+  if (backend === "openai") return { name: "The writer", how: `${(process.env.WRITER_MODEL ?? "").trim() || "a model"} at ${writerApi().baseUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}, billed to your key`, billed: true };
+  return { name: "Claude", how: "Claude Code on your subscription", billed: false };
 }
 
 /** The answer memory: what the writer already answered, reused instead of asked again. */

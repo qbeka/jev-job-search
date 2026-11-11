@@ -29,7 +29,7 @@ The rest of this page is the same setup done by hand.
 
 - **Node 22 or newer**: `node --version`. Install from nodejs.org or `brew install node`.
 - **Google Chrome**. The runner starts its own window with its own profile; your everyday Chrome is not touched.
-- **Claude**, one of two ways. Either **Claude Code** installed and signed in with `/login`: the tool runs it headless (`claude -p`) on Sonnet 5.5 at low effort, on your subscription. Or a **Claude API key** in `.env` as `ANTHROPIC_API_KEY`: the tool calls the Claude API directly, billed to the key. The skills need Claude Code; the commands work either way.
+- **A writer** for the answers that need writing. The default is **Claude Code**, installed and signed in with `/login`: the tool runs it headless (`claude -p`) on Sonnet 5.5 at low effort, on your subscription. The other ways are in [Choosing the writer](#choosing-the-writer). The skills need a coding agent (Claude Code, or Codex through `AGENTS.md`); the commands work with any writer.
 - An **OpenRouter** account and key from https://openrouter.ai/keys. Put a few dollars of credit on it; a full run costs cents.
 
 ## 2. Clone and install
@@ -177,6 +177,58 @@ git pull && npm install
 
 Your `data/` files are untouched by updates.
 
+## Choosing the writer
+
+JEV decides every typed question. What it leaves open (free text, and fields
+it was unsure of) goes to the writer. You pick the writer in `.env`; the tool
+never picks one for you.
+
+| `WRITER_BACKEND` | Who writes | What you need | Billed to |
+|---|---|---|---|
+| empty, or `claude-code` | Claude, through Claude Code | Claude Code installed and signed in | Your Claude subscription |
+| `api` (also chosen when `ANTHROPIC_API_KEY` is set) | Claude, through the Claude API | `ANTHROPIC_API_KEY` | That key |
+| `codex` | The Codex CLI, headless | Codex installed and signed in (`codex` once) | Your ChatGPT plan |
+| `openai` | Any service that speaks OpenAI's chat completions | `WRITER_MODEL`, and `WRITER_BASE_URL` and `WRITER_API_KEY` as the service wants | That key, or nothing for a model on your machine |
+
+Examples for `openai`:
+
+```
+# OpenAI
+WRITER_BACKEND=openai
+WRITER_MODEL=<a model name from OpenAI>
+WRITER_API_KEY=<your key>
+
+# OpenRouter: one key for many models
+WRITER_BACKEND=openai
+WRITER_BASE_URL=https://openrouter.ai/api/v1
+WRITER_MODEL=<provider/model>
+WRITER_API_KEY=<your OpenRouter key>
+
+# A model on your own machine, through Ollama. No key, nothing leaves the machine.
+WRITER_BACKEND=openai
+WRITER_BASE_URL=http://localhost:11434/v1
+WRITER_MODEL=<a model you pulled>
+```
+
+`WRITER_MODEL` also replaces the default model for Claude and for Codex.
+
+What stays the same with every writer: it is given your facts, the posting
+and the open fields, and no tools. An API is offered none. Codex has no such
+switch, so the tool starts it with its shell and web search off, your Codex
+config and MCP servers left out, in a read-only sandbox in an empty folder.
+Every answer is still checked against your profile and read back from the
+page before a form is sent.
+
+Two things to know before you switch:
+
+- The rules the writer follows were written and measured with Claude. Another
+  model may hold more forms for you, or write in a flatter voice. Rehearse
+  with `npx jev apply --dry --count 3` and read the answers.
+- Your profile goes to whichever service you name. Pick one you trust with it.
+
+Run `npx jev doctor --online` after a change: it makes one small call to
+prove the writer answers.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -186,7 +238,7 @@ Your `data/` files are untouched by updates.
 | An answer is stale after you changed something on the form by hand | `npx jev apply --fresh <id>`, or `memory --forget <company>` |
 | `No profile at data/profile.json` | Step 4 |
 | `Chrome did not start on port 9333` | Install Google Chrome, or set `BROWSER.chromePath` in `src/config.ts` |
-| `could not run claude` | Install Claude Code and run `claude` once to log in, or put `ANTHROPIC_API_KEY` in `.env` |
+| `could not run claude` | Install Claude Code and run `claude` once to log in, or pick another writer in `.env` ([Choosing the writer](#choosing-the-writer)) |
 | A form comes back `blocked: no form found` | The page was a login, a closed posting, or a board the runner does not walk yet. The reason is in the CSV |
 | A form comes back `filled, not ready` | The reason names the field. Add a standing answer to the profile, or finish it by hand in the window and `submit <id> --force` |
 | Forms on one site start failing with `refused` | The site is rate-limiting. Wait a few minutes; add its host to `RUN.gentleHosts` |
