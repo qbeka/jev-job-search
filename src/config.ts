@@ -145,7 +145,11 @@ export const DISCOVER = {
       "https://raw.githubusercontent.com/vanshb03/Summer2027-Internships/dev/README.md",
     canadaSummer2027:
       "https://raw.githubusercontent.com/michelleokolie/canada-tech-internships-summer-2027/main/README.md",
+    /** JobsWithPay public API: intern and entry-level tech jobs read from company job boards (no key). */
+    jobsWithPay: "https://jobswithpay.com/api/v1/jobs/search",
   },
+  /** Pages of 40 jobs read from JobsWithPay in one search. */
+  jobsWithPayPages: 15,
 } as const;
 
 /**

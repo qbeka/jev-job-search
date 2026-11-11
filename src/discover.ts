@@ -30,6 +30,7 @@ import { fetchLeverBoard } from "./sources/ats/lever.js";
 import { boardsFromJobs, type Board } from "./sources/companies.js";
 import { fetchReadmeSources } from "./sources/githubReadme.js";
 import { fetchSimplify } from "./sources/simplify.js";
+import { fetchJobsWithPay } from "./sources/jobswithpay.js";
 import { importSheet } from "./sources/sheetImport.js";
 import { mapLimit } from "./util/http.js";
 
@@ -69,15 +70,19 @@ export async function collectJobs(opts: DiscoverOptions = {}): Promise<Job[]> {
   const log = opts.log ?? (() => {});
   const jobs: Job[] = [];
 
-  const [simplify, readmes] = await Promise.all([
+  const [simplify, readmes, jobsWithPay] = await Promise.all([
     fetchSimplify().catch((e) => {
       log(`[sources] simplify failed: ${String(e)}`);
       return [] as Job[];
     }),
     fetchReadmeSources(),
+    fetchJobsWithPay().catch((e) => {
+      log(`[sources] jobswithpay failed: ${String(e)}`);
+      return [] as Job[];
+    }),
   ]);
-  log(`[sources] simplify ${simplify.length}, github lists ${readmes.length}`);
-  jobs.push(...simplify, ...readmes);
+  log(`[sources] simplify ${simplify.length}, github lists ${readmes.length}, jobswithpay ${jobsWithPay.length}`);
+  jobs.push(...simplify, ...readmes, ...jobsWithPay);
 
   if (existsSync(PATHS.imports)) {
     for (const f of readdirSync(PATHS.imports).filter((f) => f.endsWith(".csv"))) {

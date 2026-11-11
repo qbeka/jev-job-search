@@ -103,3 +103,20 @@ describe("Workday postings", () => {
     expect(workdayJob({ nothing: true }, link)).toBeNull();
   });
 });
+
+describe("JobsWithPay source", () => {
+  it("keeps the company board link, maps the visa flag and skips jobs with no company link", async () => {
+    const { parseJobsWithPay, jobsWithPayUrl } = await import("../src/sources/jobswithpay.js");
+    const raw = JSON.parse(fixture("jobswithpay-search.json"));
+    const { jobs, next } = parseJobsWithPay(raw);
+    expect(jobs.length).toBe(raw.jobs.length - 1);
+    expect(jobs.every((j) => j.source === "jobswithpay")).toBe(true);
+    expect(jobs.every((j) => !/jobswithpay\.com/.test(j.url))).toBe(true);
+    expect(jobs.every((j) => j.ats !== "other" || /^https:\/\//.test(j.url))).toBe(true);
+    expect(next).toBe(raw.next_cursor);
+    const flagged = raw.jobs.find((j: { visa_sponsor?: boolean; apply_url?: string | null }) => j.visa_sponsor && j.apply_url);
+    if (flagged) expect(jobs.find((j) => j.title === flagged.title)?.sponsorship).toBe("offers");
+    expect(jobsWithPayUrl("t1_2")).toMatch(/level=intern%2Centry/);
+    expect(jobsWithPayUrl("t1_2")).toMatch(/cursor=t1_2/);
+  });
+});
