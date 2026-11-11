@@ -103,34 +103,69 @@ export class LibsecretStore implements SecretStore {
 }
 
 // Fixed scripts. The names come from the environment and the value from standard input, so nothing is ever joined into script text.
-const VAULT = [
+// Credential Manager has no command that reads a secret back, so the scripts call the same Win32 functions it is built on.
+const CRED = [
   "$ErrorActionPreference = 'Stop'",
-  "[void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]",
-  "$vault = New-Object Windows.Security.Credentials.PasswordVault",
-  "$service = $env:JEV_SECRET_SERVICE",
-  "$item = $env:JEV_SECRET_ITEM",
+  "Add-Type -TypeDefinition @'",
+  "using System;",
+  "using System.Runtime.InteropServices;",
+  "using System.Text;",
+  "public static class JevCred {",
+  "  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]",
+  "  struct CREDENTIAL {",
+  "    public uint Flags; public uint Type; public string TargetName; public string Comment;",
+  "    public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;",
+  "    public uint CredentialBlobSize; public IntPtr CredentialBlob; public uint Persist;",
+  "    public uint AttributeCount; public IntPtr Attributes; public string TargetAlias; public string UserName;",
+  "  }",
+  '  [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool CredReadW(string target, uint type, uint flags, out IntPtr cred);',
+  '  [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool CredWriteW(ref CREDENTIAL cred, uint flags);',
+  '  [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool CredDeleteW(string target, uint type, uint flags);',
+  '  [DllImport("advapi32.dll")] static extern void CredFree(IntPtr cred);',
+  "  public static string Read(string target) {",
+  "    IntPtr p;",
+  "    if (!CredReadW(target, 1, 0, out p)) return null;",
+  "    try {",
+  "      CREDENTIAL c = (CREDENTIAL)Marshal.PtrToStructure(p, typeof(CREDENTIAL));",
+  "      byte[] b = new byte[c.CredentialBlobSize];",
+  "      if (b.Length > 0) Marshal.Copy(c.CredentialBlob, b, 0, b.Length);",
+  "      return Encoding.Unicode.GetString(b);",
+  "    } finally { CredFree(p); }",
+  "  }",
+  "  public static bool Write(string target, string user, string secret) {",
+  "    byte[] b = Encoding.Unicode.GetBytes(secret);",
+  "    CREDENTIAL c = new CREDENTIAL();",
+  // A generic credential, kept for this person on this machine only.
+  "    c.Type = 1; c.Persist = 2; c.TargetName = target; c.UserName = user;",
+  "    c.CredentialBlobSize = (uint)b.Length;",
+  "    c.CredentialBlob = Marshal.AllocHGlobal(b.Length);",
+  "    try { Marshal.Copy(b, 0, c.CredentialBlob, b.Length); return CredWriteW(ref c, 0); }",
+  "    finally { Marshal.FreeHGlobal(c.CredentialBlob); }",
+  "  }",
+  "  public static bool Delete(string target) { return CredDeleteW(target, 1, 0); }",
+  "}",
+  "'@",
+  "$target = $env:JEV_SECRET_SERVICE + ':' + $env:JEV_SECRET_ITEM",
 ];
-const VAULT_REMOVE = "try { $vault.Remove($vault.Retrieve($service, $item)) } catch { }";
-const VAULT_ADD = "$vault.Add((New-Object Windows.Security.Credentials.PasswordCredential($service, $item, $value)))";
-export const VAULT_SCRIPTS = {
-  get: [...VAULT, "try { $c = $vault.Retrieve($service, $item) } catch { exit 3 }", "$c.RetrievePassword()", "[Console]::Out.Write($c.Password)"].join("\n"),
-  set: [...VAULT, "$value = [Console]::In.ReadLine()", "if ([string]::IsNullOrEmpty($value)) { exit 4 }", VAULT_REMOVE, VAULT_ADD].join("\n"),
+const CRED_WRITE = "if (-not [JevCred]::Write($target, $env:JEV_SECRET_ITEM, $value)) { exit 5 }";
+export const CRED_SCRIPTS = {
+  get: [...CRED, "$found = [JevCred]::Read($target)", "if ($null -eq $found) { exit 3 }", "[Console]::Out.Write($found)"].join("\n"),
+  set: [...CRED, "$value = [Console]::In.ReadLine()", "if ([string]::IsNullOrEmpty($value)) { exit 4 }", CRED_WRITE].join("\n"),
   ask: [
-    ...VAULT,
+    ...CRED,
     "$typed = Read-Host -AsSecureString 'Password (not shown)'",
     "$value = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($typed))",
     "if ([string]::IsNullOrEmpty($value)) { exit 4 }",
-    VAULT_REMOVE,
-    VAULT_ADD,
+    CRED_WRITE,
   ].join("\n"),
-  delete: [...VAULT, VAULT_REMOVE].join("\n"),
+  delete: [...CRED, "[void][JevCred]::Delete($target)"].join("\n"),
 } as const;
 
 /**
- * Windows Credential Manager (its Web Credentials vault), through Windows PowerShell, which every
- * Windows 10 and 11 has. Each call runs one of the fixed scripts above.
+ * Windows Credential Manager (a generic credential under "Windows Credentials"), through Windows
+ * PowerShell, which every Windows 10 and 11 has. Each call runs one of the fixed scripts above.
  */
-export class WindowsVaultStore implements SecretStore {
+export class WindowsCredentialStore implements SecretStore {
   constructor(private readonly run: Run = runCommand, private readonly service: string = ACCOUNTS.keychainService, private readonly powershell: string = powershellPath()) {}
 
   private call(script: string, name: string, opts: { input?: string; inherit?: boolean } = {}) {
@@ -138,23 +173,23 @@ export class WindowsVaultStore implements SecretStore {
   }
 
   get(name: string): Secret | null {
-    const r = this.call(VAULT_SCRIPTS.get, name);
+    const r = this.call(CRED_SCRIPTS.get, name);
     const value = r.stdout ?? "";
     return r.status === 0 && value ? new Secret(value) : null;
   }
 
   set(name: string, value: Secret): void {
-    const r = this.call(VAULT_SCRIPTS.set, name, { input: `${oneLine(name, value)}\n` });
-    // The value is read back: the vault has limits of its own, and a value it cut short must not pass as stored.
+    const r = this.call(CRED_SCRIPTS.set, name, { input: `${oneLine(name, value)}\n` });
+    // The value is read back: Credential Manager has a size limit, and a value it refused must not pass as stored.
     if (r.status !== 0 || this.get(name)?.reveal() !== value.reveal()) throw new Error(`Windows Credential Manager did not take ${name}`);
   }
 
   setByPerson(name: string): boolean {
-    return this.call(VAULT_SCRIPTS.ask, name, { inherit: true }).status === 0;
+    return this.call(CRED_SCRIPTS.ask, name, { inherit: true }).status === 0;
   }
 
   delete(name: string): void {
-    this.call(VAULT_SCRIPTS.delete, name);
+    this.call(CRED_SCRIPTS.delete, name);
   }
 }
 
@@ -221,15 +256,15 @@ let hasSecretTool: boolean | null = null;
 const secretToolInstalled = (): boolean => (hasSecretTool ??= (process.env.PATH ?? "").split(path.delimiter).some((dir) => dir && existsSync(path.join(dir, "secret-tool"))));
 
 /** What kind of store this machine has: the system's own, or, on a Linux machine without `secret-tool`, the environment. */
-export function storeKind(platform: NodeJS.Platform = process.platform, secretTool: () => boolean = secretToolInstalled): "keychain" | "vault" | "libsecret" | "env" {
+export function storeKind(platform: NodeJS.Platform = process.platform, secretTool: () => boolean = secretToolInstalled): "keychain" | "wincred" | "libsecret" | "env" {
   if (platform === "darwin") return "keychain";
-  if (platform === "win32") return "vault";
+  if (platform === "win32") return "wincred";
   return secretTool() ? "libsecret" : "env";
 }
 
 export function defaultStore(): SecretStore {
   const kind = storeKind();
-  return kind === "keychain" ? new KeychainStore() : kind === "vault" ? new WindowsVaultStore() : kind === "libsecret" ? new LibsecretStore() : new EnvStore();
+  return kind === "keychain" ? new KeychainStore() : kind === "wincred" ? new WindowsCredentialStore() : kind === "libsecret" ? new LibsecretStore() : new EnvStore();
 }
 
 /** Which of a board's password rules a password does not meet. Says which rules, never the password. */

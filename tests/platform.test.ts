@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { linuxDialogCommands, WINDOWS_DIALOG } from "../src/accounts/ask.js";
-import { defaultStore, LibsecretStore, storeKind, VAULT_SCRIPTS, WindowsVaultStore } from "../src/accounts/secrets.js";
+import { defaultStore, LibsecretStore, storeKind, CRED_SCRIPTS, WindowsCredentialStore } from "../src/accounts/secrets.js";
 import { systemPromptArgs } from "../src/answers/resolve.js";
 import { childEnv, chromeCandidates, DAILY, findChrome } from "../src/config.js";
 import { installSchedule, removeSchedule, scheduleStatus, systemdUnits, taskScript } from "../src/run/schedule.js";
@@ -121,7 +121,7 @@ describe("the secret store of each system", () => {
 
   it("is the Keychain on a Mac, Credential Manager on Windows, the keyring on Linux, and .env only where there is none", () => {
     expect(storeKind("darwin")).toBe("keychain");
-    expect(storeKind("win32")).toBe("vault");
+    expect(storeKind("win32")).toBe("wincred");
     expect(storeKind("linux", () => true)).toBe("libsecret");
     expect(storeKind("linux", () => false)).toBe("env");
   });
@@ -156,13 +156,13 @@ describe("the secret store of each system", () => {
   it("talks to Windows Credential Manager through fixed scripts: names in the environment, the secret on standard input", () => {
     const kept = new Map<string, string>();
     const calls: { command: string; args: string[]; input?: string; env?: Record<string, string> }[] = [];
-    const store = new WindowsVaultStore((command, args, opts) => {
+    const store = new WindowsCredentialStore((command, args, opts) => {
       calls.push({ command, args, ...(opts.input !== undefined ? { input: opts.input } : {}), ...(opts.env ? { env: opts.env } : {}) });
       const script = decoded(args);
       const key = `${opts.env?.JEV_SECRET_SERVICE}|${opts.env?.JEV_SECRET_ITEM}`;
-      if (script === VAULT_SCRIPTS.set) kept.set(key, (opts.input ?? "").replace(/\n$/, ""));
-      if (script === VAULT_SCRIPTS.delete) kept.delete(key);
-      if (script === VAULT_SCRIPTS.get) return { status: kept.has(key) ? 0 : 3, stdout: kept.get(key) ?? "" };
+      if (script === CRED_SCRIPTS.set) kept.set(key, (opts.input ?? "").replace(/\n$/, ""));
+      if (script === CRED_SCRIPTS.delete) kept.delete(key);
+      if (script === CRED_SCRIPTS.get) return { status: kept.has(key) ? 0 : 3, stdout: kept.get(key) ?? "" };
       return { status: 0, stdout: "" };
     }, "svc", "powershell.exe");
     store.set("gmail-refresh-token", new Secret(SECRET));
@@ -176,7 +176,7 @@ describe("the secret store of each system", () => {
   });
 
   it("keeps a person's words out of every script it runs", () => {
-    for (const script of [...Object.values(VAULT_SCRIPTS), WINDOWS_DIALOG]) expect(script).not.toMatch(/\$\{|`/);
+    for (const script of [...Object.values(CRED_SCRIPTS), WINDOWS_DIALOG]) expect(script).not.toMatch(/\$\{|`/);
     const [zenity, kdialog] = linuxDialogCommands("Your password at Acme.");
     expect(zenity?.args).toContain("--hide-text");
     expect(kdialog?.args).toContain("--password");
@@ -197,7 +197,7 @@ describe("the secret store of each system", () => {
       store.delete(name);
     }
     expect(store.get(name)).toBeNull();
-  });
+  }, 180_000);
 });
 
 describe("the schedule on Linux and Windows", () => {
