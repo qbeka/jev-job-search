@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 546" role="img" aria-labelledby="t d">
+<title id="t">What a run prints</title>
+<desc id="d">An illustration of the tool applying to three made-up jobs: one is sent after every value is read back, one waits for a code only the person can type, and one is left for the person because it asks for a signature.</desc>
+<rect width="920" height="546" rx="14" fill="#0d1117"/>
+<rect x=".5" y=".5" width="919" height="545" rx="13.5" fill="none" stroke="#30363d"/>
+<circle cx="26" cy="24" r="6.5" fill="#ff5f57"/><circle cx="48" cy="24" r="6.5" fill="#febc2e"/><circle cx="70" cy="24" r="6.5" fill="#28c840"/>
+<text x="460" y="29" text-anchor="middle" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" fill="#8b949e">jev-job-search</text>
+<line x1="0" y1="46" x2="920" y2="46" stroke="#21262d"/>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace" font-size="14.5">
+<text y="76"><tspan x="28.0" fill="#7ee787">&gt;</tspan><tspan x="45.6" fill="#e6edf3">/apply 3</tspan></text>
+<text y="124"><tspan x="28.0" fill="#e6edf3" font-weight="600">== Acme Robotics | Software Engineer, New Grad</tspan><tspan x="459.2" fill="#3fb950">READY in 38.4s</tspan><tspan fill="#8b949e">, JEV $0.0012</tspan></text>
+<text y="148"><tspan x="54.4" fill="#8b949e">* fill</tspan><tspan x="133.6" fill="#e6edf3">Full name</tspan><tspan x="485.6" fill="#79c0ff">Ada Lovelace</tspan></text>
+<text y="172"><tspan x="54.4" fill="#8b949e">* upload</tspan><tspan x="133.6" fill="#e6edf3">Resume/CV</tspan><tspan x="485.6" fill="#79c0ff">resume.pdf</tspan></text>
+<text y="196"><tspan x="54.4" fill="#8b949e">* fill</tspan><tspan x="133.6" fill="#e6edf3">Are you authorized to work in Canada?</tspan><tspan x="485.6" fill="#79c0ff">Yes</tspan></text>
+<text y="220"><tspan x="54.4" fill="#8b949e">* fill</tspan><tspan x="133.6" fill="#e6edf3">Will you require sponsorship?</tspan><tspan x="485.6" fill="#79c0ff">No</tspan></text>
+<text y="244"><tspan x="54.4" fill="#d2a8ff">* writer</tspan><tspan x="133.6" fill="#e6edf3">Why do you want to work at Acme?</tspan><tspan x="485.6" fill="#79c0ff">I shipped a queue that ...</tspan></text>
+<text y="268"><tspan x="54.4" fill="#8b949e">every value read back from the page</tspan></text>
+<text y="292"><tspan x="54.4" fill="#3fb950">submitted (0.98)</tspan></text>
+<text y="340"><tspan x="28.0" fill="#e6edf3" font-weight="600">== Northwind | Backend Engineer Intern</tspan><tspan x="459.2" fill="#e3b341">needs your code</tspan></text>
+<text y="364"><tspan x="54.4" fill="#8b949e">The board emailed you a code. Type it in the window, then /resume</tspan></text>
+<text y="412"><tspan x="28.0" fill="#e6edf3" font-weight="600">== Globex | Data Engineer I</tspan><tspan x="459.2" fill="#ff7b72">filled, not ready</tspan></text>
+<text y="436"><tspan x="54.4" fill="#8b949e">Asks you to sign an agreement: left for you in applications/manual.csv</tspan></text>
+<text y="484"><tspan x="28.0" fill="#e6edf3">1 applied, 1 waiting for you, 1 left for you</tspan></text>
+<text y="508"><tspan x="28.0" fill="#8b949e">JEV $0.0037 for 3 forms. The writer ran on your own subscription.</tspan></text>
+</g></svg>

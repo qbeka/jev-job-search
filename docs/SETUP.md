@@ -1,4 +1,4 @@
-# Setup (macOS)
+# Setup
 
 *About twenty minutes the first time. Last verified 2026-10-02.*
 
@@ -27,8 +27,9 @@ The rest of this page is the same setup done by hand.
 
 ## 1. Prerequisites
 
-- **Node 22 or newer**: `node --version`. Install from nodejs.org or `brew install node`.
-- **Google Chrome**. The runner starts its own window with its own profile; your everyday Chrome is not touched.
+- **macOS, Linux or Windows.** [PLATFORMS.md](PLATFORMS.md) says what the tool uses on each and what Linux needs installed for accounts.
+- **Node 22 or newer**: `node --version`. Install from nodejs.org, or with your system's package manager.
+- **Google Chrome** (Chromium on Linux also works). The runner starts its own window with its own profile; your everyday Chrome is not touched.
 - **A writer** for the answers that need writing. The default is **Claude Code**, installed and signed in with `/login`: the tool runs it headless (`claude -p`) on Sonnet 5.5 at low effort, on your subscription. The other ways are in [Choosing the writer](#choosing-the-writer). The skills need a coding agent (Claude Code, or Codex through `AGENTS.md`); the commands work with any writer.
 - An **OpenRouter** account and key from https://openrouter.ai/keys. Put a few dollars of credit on it; a full run costs cents.
 
