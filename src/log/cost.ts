@@ -87,7 +87,7 @@ export function formatCost(c: CostSummary): string {
   const row = (name: string, b: Bucket) => `  ${name.padEnd(12)} ${String(b.calls).padStart(5)} calls  ${String(b.inputTokens).padStart(9)} in  ${String(b.outputTokens).padStart(8)} out  ${usd(b.costUsd)}`;
   const w = writerName();
   const api = w.billed;
-  const lines = ["JEV (billed to your OpenRouter key)"];
+  const lines = ["JEV (billed to your TypeSafe or OpenRouter key)"];
   for (const [k, b] of Object.entries(c.jev)) lines.push(row(k, b));
   const claudeCalls = Object.values(c.claude).reduce((n, b) => n + b.calls, 0);
   if (api) {

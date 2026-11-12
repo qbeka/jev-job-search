@@ -9,7 +9,7 @@ git clone https://github.com/qbeka/jev-job-search && cd jev-job-search && npm in
 ```
 
 Then type `/setup`. Claude asks for your resume, asks what the resume does
-not say, opens `.env` for you to paste your OpenRouter key, finds jobs,
+not say, opens `.env` for you to paste your JEV key, finds jobs,
 rehearses three forms without sending so you can correct what it got
 wrong, and ends with one real application filled and waiting for your yes. The questions it asks
 are listed in `.claude/skills/setup/questions.md`.
@@ -31,7 +31,7 @@ The rest of this page is the same setup done by hand.
 - **Node 22 or newer**: `node --version`. Install from nodejs.org, or with your system's package manager.
 - **Google Chrome** (Chromium on Linux also works). The runner starts its own window with its own profile; your everyday Chrome is not touched.
 - **A writer** for the answers that need writing. The default is **Claude Code**, installed and signed in with `/login`: the tool runs it headless (`claude -p`) on Sonnet 5.5 at low effort, on your subscription. The other ways are in [Choosing the writer](#choosing-the-writer). The skills need a coding agent (Claude Code, or Codex through `AGENTS.md`); the commands work with any writer.
-- An **OpenRouter** account and key from https://openrouter.ai/keys. Put a few dollars of credit on it; a full run costs cents.
+- A **JEV key**: from **TypeSafe** at https://console.typesafe.ai/keys, or from **OpenRouter** at https://openrouter.ai/keys. Same model, same price. Put a few dollars of credit on it; a full run costs cents.
 
 ## 2. Clone and install
 
@@ -48,9 +48,12 @@ npx vitest run        # everything should pass offline
 cp .env.example .env
 ```
 
-Edit `.env` and set `OPENROUTER_API_KEY=sk-or-v1-…`. The file is
-git-ignored. If a key has ever been pasted into a chat, an issue, or a
-screenshot, rotate it at openrouter.ai/keys first.
+Edit `.env` and set one key: `TYPESAFE_API_KEY=` for a TypeSafe key, or
+`OPENROUTER_API_KEY=sk-or-v1-…` for an OpenRouter key. With both set,
+TypeSafe is used; `JEV_PROVIDER=openrouter` picks the other.
+`npx jev doctor` names the one in use. The file is git-ignored. If a key
+has ever been pasted into a chat, an issue, or a screenshot, rotate it
+first, at console.typesafe.ai/keys or openrouter.ai/keys.
 
 ## 4. Your profile
 
@@ -235,7 +238,7 @@ prove the writer answers.
 | Symptom | Fix |
 |---|---|
 | Not sure what is wrong | `npx jev doctor --online` names it |
-| `OPENROUTER_API_KEY is not set` | Create `.env` as in step 3 |
+| `Neither TYPESAFE_API_KEY nor OPENROUTER_API_KEY is set` | Create `.env` as in step 3 |
 | An answer is stale after you changed something on the form by hand | `npx jev apply --fresh <id>`, or `memory --forget <company>` |
 | `No profile at data/profile.json` | Step 4 |
 | `Chrome did not start on port 9333` | Install Google Chrome, or set `BROWSER.chromePath` in `src/config.ts` |

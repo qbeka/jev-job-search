@@ -7,7 +7,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { BROWSER, childEnv, DOCTOR, GMAIL, PATHS, ROOT, WRITER, writerApi, writerBackend, writerModel } from "./config.js";
+import { BROWSER, childEnv, DOCTOR, GMAIL, JEV, jevProvider, PATHS, ROOT, WRITER, writerApi, writerBackend, writerModel, type JevProvider } from "./config.js";
 import { loadAccounts } from "./accounts/config.js";
 import { defaultStore, type SecretStore } from "./accounts/secrets.js";
 import { loadGmail } from "./mail/gmail.js";
@@ -75,13 +75,17 @@ export function checkClaude(): Check {
   return { name: "Claude", ok, detail: ok ? `Claude Code ${r.stdout.trim()} on your subscription` : "the claude command was not found", fix: "Install Claude Code from https://code.claude.com and run `claude` once to sign in, or put ANTHROPIC_API_KEY in .env to use the Claude API instead. To write with another model, set WRITER_BACKEND in .env (docs/SETUP.md)" };
 }
 
-export function checkKey(key = process.env.OPENROUTER_API_KEY ?? ""): Check {
-  const ok = key.trim().length > 0;
+/** The JEV key for the provider in use: TypeSafe's or OpenRouter's (`jevProvider()`). */
+export function checkKey(key?: string, provider: JevProvider | null = jevProvider()): Check {
+  const p = JEV.providers[provider ?? "openrouter"];
+  const value = key ?? process.env[p.keyEnv] ?? "";
+  const ok = value.trim().length > 0;
+  const { typesafe, openrouter } = JEV.providers;
   return {
-    name: "OpenRouter key",
+    name: "JEV key",
     ok,
-    detail: ok ? "set in .env" : existsSync(path.join(ROOT, ".env")) ? ".env exists but OPENROUTER_API_KEY is empty" : "no .env file yet",
-    fix: "Create a key at https://openrouter.ai/keys, run `cp .env.example .env`, and paste the key after OPENROUTER_API_KEY= in .env. Do not paste the key into a chat.",
+    detail: ok ? `${p.name}, ${p.keyEnv} set in .env` : !existsSync(path.join(ROOT, ".env")) ? "no .env file yet" : provider ? `JEV_PROVIDER asks for ${p.name} but ${p.keyEnv} is empty` : `.env exists but ${typesafe.keyEnv} and ${openrouter.keyEnv} are empty`,
+    fix: `Create a key at ${typesafe.keysUrl} (or at ${openrouter.keysUrl}), run \`cp .env.example .env\` if there is no .env, and paste the key after ${typesafe.keyEnv}= (or ${openrouter.keyEnv}=) in .env. Do not paste the key into a chat.`,
   };
 }
 
@@ -148,11 +152,12 @@ export function checkAccounts(store: SecretStore = defaultStore(), files: { acco
 
 /** One tiny JEV call: proves the key is valid and has credit. */
 export async function checkKeyOnline(): Promise<Check> {
-  const fix = "Check the key at https://openrouter.ai/keys and that the account has credit";
+  const p = JEV.providers[jevProvider() ?? "openrouter"];
+  const fix = `Check the key at ${p.keysUrl} and that the account has credit`;
   try {
     const jev = new JevClient({ usageLog: null });
     await jev.decide("The sky is blue.", { ok: noul("Does the text mention a colour?") }, "doctor");
-    return { name: "JEV answers", ok: true, detail: `one test call, $${jev.usage.costUsd.toFixed(6)}`, fix: "" };
+    return { name: "JEV answers", ok: true, detail: `one test call through ${p.name}, $${jev.usage.costUsd.toFixed(6)}`, fix: "" };
   } catch (err) {
     return { name: "JEV answers", ok: false, detail: (err instanceof Error ? err.message : String(err)).slice(0, 300), fix };
   }

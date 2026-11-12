@@ -34,7 +34,7 @@ An open-source job application tool for students and new graduates applying to s
 
 Two models share the thinking. [JEV](https://openrouter.ai/typesafe/jev-1.13) makes every decision that has a fixed set of answers (which of your details goes in this box, which option, how good a fit this job is) for a fraction of a cent. A writer, Claude on your own subscription unless you pick another, writes the sentences. The code does the rest.
 
-> This is an independent open-source project. It is not affiliated with, endorsed by or maintained by Anthropic, OpenAI, OpenRouter, or any job board. There is no token, coin or paid tier; the only ways to support it are using it and contributing on GitHub.
+> This is an independent open-source project. It is not affiliated with, endorsed by or maintained by Anthropic, OpenAI, TypeSafe, OpenRouter, or any job board. There is no token, coin or paid tier; the only ways to support it are using it and contributing on GitHub.
 
 ## Does it actually work?
 
@@ -54,7 +54,7 @@ It is a beta. Forms on boards it has not met will hold, and it says so.
 
 ## Quick start
 
-You need [Node.js](https://nodejs.org) 22 or newer, Google Chrome, a coding agent, and an [OpenRouter](https://openrouter.ai/keys) key with a few dollars of credit.
+You need [Node.js](https://nodejs.org) 22 or newer, Google Chrome, a coding agent, and a JEV key with a few dollars of credit, from [TypeSafe](https://console.typesafe.ai/keys) or [OpenRouter](https://openrouter.ai/keys) (same model, same price).
 
 ```bash
 git clone https://github.com/qbeka/jev-job-search
@@ -68,7 +68,7 @@ Then open your agent in the folder and ask for the setup:
 claude      # then type: /setup
 ```
 
-`/setup` checks what is installed, reads your resume PDF and anything else you drop into `documents/`, asks only what those do not say, opens `.env` for you to paste your OpenRouter key, builds your profile, finds jobs, rehearses three forms without sending so you can correct what it got wrong, and ends with one real application filled and waiting for your yes. About 20 minutes, most of it your answers.
+`/setup` checks what is installed, reads your resume PDF and anything else you drop into `documents/`, asks only what those do not say, opens `.env` for you to paste your JEV key (TypeSafe or OpenRouter), builds your profile, finds jobs, rehearses three forms without sending so you can correct what it got wrong, and ends with one real application filled and waiting for your yes. About 20 minutes, most of it your answers.
 
 After that, the whole workflow is three commands:
 
@@ -199,7 +199,7 @@ Every skill runs a command you can also type yourself, as `npx jev <command>` fr
 
 | | |
 |---|---|
-| **JEV** | The only separate bill, through your OpenRouter key. Measured on real batches: **1 to 1.5 cents for every 10 forms**, and 6 to 9 cents to rate a few hundred new postings. Five dollars covers about 60 searches and 3,000 applications. |
+| **JEV** | The only separate bill, through your TypeSafe or OpenRouter key. Measured on real batches: **1 to 1.5 cents for every 10 forms**, and 6 to 9 cents to rate a few hundred new postings. Five dollars covers about 60 searches and 3,000 applications. |
 | **The writer** | Nothing extra with Claude Code or Codex: the calls draw on the subscription you already have. On an API key, they are billed to that key. |
 | **Everything else** | Nothing. No paid tier, no hosted service. |
 

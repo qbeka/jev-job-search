@@ -5,7 +5,9 @@ openrouter.ai/docs/guides/community/jev, the tutorial at
 openrouter.ai/docs/guides/community/jev-tutorial, docs.typesafe.ai
 (introduction, primitives, confidence, patterns), the model page
 openrouter.ai/typesafe/jev-1.13, and live calls made while building this.
-Last verified 2026-10-02.*
+The TypeSafe API section follows docs.typesafe.ai/api and
+api.typesafe.ai/openapi.json. Last verified 2026-10-02 (TypeSafe API:
+2026-11-11, from the documentation, no live call).*
 
 ## What JEV is
 
@@ -33,11 +35,29 @@ Content-Type: application/json
 { "model": "typesafe/jev-1.13", "state": <string | object | string[]>, "questions": { <key>: <question> } }
 ```
 
-An alias `~typesafe/jev-latest` exists. A second surface,
-`POST /api/v1/systemone`, serves the TypeSafe SDK; this tool uses the
-decisions endpoint only.
+An alias `~typesafe/jev-latest` exists.
 
-Response (observed):
+The same model is sold directly by TypeSafe, and the tool uses that when
+`TYPESAFE_API_KEY` is in `.env` (`jevProvider()` in `src/config.ts`; with
+both keys TypeSafe wins unless `JEV_PROVIDER=openrouter`):
+
+```
+POST https://api.typesafe.ai/v1/systemone
+Authorization: Bearer <TYPESAFE_API_KEY>
+Content-Type: application/json
+
+{ "model": "jev-1.13.0", "state": <string | object | string[]>, "questions": { <key>: <question> } }
+```
+
+`jev-1.13.0` is the versioned id of the model OpenRouter calls
+`typesafe/jev-1.13`. TypeSafe's aliases (`jev-latest`, `jev-preview`) move
+to new releases, so the tool pins the version. The price is the same,
+$0.042 per million input tokens with output free. TypeSafe's response has
+`model`, `answers` and `usage: { input_tokens, output_tokens }`, with no
+`id`, `provider` or `cost`; the client works the cost out from the input
+tokens at `JEV.inputUsdPerToken` and logs it with `cost_estimated: true`.
+
+Response from OpenRouter (observed):
 
 ```json
 {

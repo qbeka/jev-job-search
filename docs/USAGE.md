@@ -358,8 +358,8 @@ does this makes the tool better on the sites they applied to, for everyone.
 - Your profile, your drafts, your resume, your record of applications and
   the answers the tool remembers stay on your computer. Git ignores all of
   them, so you cannot commit them by accident.
-- The job text and the facts in your profile go to OpenRouter when JEV rates
-  a job or maps a form.
+- The job text and the facts in your profile go to TypeSafe or OpenRouter,
+  whichever JEV key is in `.env`, when JEV rates a job or maps a form.
 - The job text, your facts and the open questions go to Anthropic, through
   your own Claude Code sign-in or your own Claude API key, when a form has
   questions for Claude.
@@ -390,9 +390,10 @@ None of this is built yet.
 - **Download and open.** Today the tool is a repository you clone, with
   Node and Claude Code installed first. A packaged desktop app, with the
   dashboard as its window, would remove that. The command line would stay.
-- **One connection for both models.** Setup asks for Claude and for an
-  OpenRouter key. Writing through OpenRouter as well would make that one
-  key, billed there and not to a Claude subscription. Not built or tested.
+- **One connection for both models.** Setup asks for Claude and for a
+  JEV key. Writing through OpenRouter as well would make that one
+  OpenRouter key, billed there and not to a Claude subscription. Not built
+  or tested.
 - **A shared Google sign-in for verification emails**, so nobody needs a
   Google Cloud project of their own. That takes Google's review of the
   app, which this project has not done.

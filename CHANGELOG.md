@@ -11,6 +11,14 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added
+- JEV through TypeSafe's own API. Put `TYPESAFE_API_KEY` in `.env` instead
+  of `OPENROUTER_API_KEY` and every JEV call goes to TypeSafe, on the same
+  model (`jev-1.13.0`) at the same price. With both keys, TypeSafe is used;
+  `JEV_PROVIDER=openrouter` picks OpenRouter. TypeSafe reports no cost, so
+  the spend caps and `npx jev cost` work it out from input tokens at the
+  list price. `doctor` names the provider in use.
+
 ## [1.7.0] - 2026-11-11
 
 ### Added
