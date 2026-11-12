@@ -19,6 +19,15 @@ changed for a person using the tool and what changed for a contributor.
   the spend caps and `npx jev cost` work it out from input tokens at the
   list price. `doctor` names the provider in use.
 
+### Fixed
+- A question about the right to work "in the country you currently reside
+  in", or in "your country of residence", is now answered for the country
+  in the profile's address. Before, it was answered for the posting's
+  country, so a true "Yes" from a candidate who lives and may work in the
+  United States was held back on a posting listed in Canada and the United
+  States, and the required field was left empty. A country the question
+  names still wins.
+
 ## [1.7.0] - 2026-11-11
 
 ### Added
