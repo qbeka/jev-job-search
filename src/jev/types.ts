@@ -1,6 +1,6 @@
 /**
- * Types for the OpenRouter Decisions API (typesafe/jev-1.13).
- * Reference: https://openrouter.ai/docs/guides/community/jev and docs.typesafe.ai.
+ * Types for JEV's decision API, the same at TypeSafe (POST /v1/systemone, jev-1.13.0) and at OpenRouter (typesafe/jev-1.13).
+ * Reference: https://docs.typesafe.ai/api and https://openrouter.ai/docs/guides/community/jev. TypeSafe answers with model, answers and usage (tokens only, no id or cost).
  */
 import { z } from "zod";
 

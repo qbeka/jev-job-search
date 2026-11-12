@@ -5,7 +5,7 @@
 | `ARCHITECTURE.md` | The pipeline end to end: where the code is, the apply loop, forms with several pages, verification, what the tool learns, cost, file formats |
 | `JEV.md` | Everything learned about JEV: the API, the three question types, confidence, pricing, patterns, and every question this tool asks with the reasoning |
 | `USAGE.md` | Day to day: how `/apply` works step by step, what the tool handles and leaves to you, your records, how well it works, how it learns, where your information goes, what is planned |
-| `SETUP.md` | Setup: the `/setup` skill and `doctor`, then the same steps by hand: Node, your agent, the OpenRouter key, the profile, the resume, the first rehearsal, what is left for you, and choosing the writer |
+| `SETUP.md` | Setup: the `/setup` skill and `doctor`, then the same steps by hand: Node, your agent, the JEV key, the profile, the resume, the first rehearsal, what is left for you, and choosing the writer |
 | `PLATFORMS.md` | macOS, Linux and Windows: what the tool uses on each, what to install, and what has and has not been tested |
 | `CUSTOMIZE.md` | Your profile files, where jobs come from, tailored resumes and cover letters, your own templates, starting over, tips |
 | `COST.md` | What JEV and the writer cost, measured, and how the tool keeps the bill down |

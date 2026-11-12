@@ -92,9 +92,35 @@ export function loadEnv(file = path.join(ROOT, ".env")): void {
   }
 }
 
+export type JevProvider = "typesafe" | "openrouter";
+
 export const JEV = {
-  endpoint: "https://openrouter.ai/api/alpha/decisions",
-  model: "typesafe/jev-1.13",
+  /**
+   * Two ways to reach the same model. TypeSafe sells JEV directly; OpenRouter resells it. Both take
+   * the same request ({ model, state, questions }) and answer in the same shape. `jevProvider()`
+   * picks one from the keys in .env.
+   */
+  providers: {
+    typesafe: {
+      name: "TypeSafe",
+      endpoint: "https://api.typesafe.ai/v1/systemone",
+      model: "jev-1.13.0",
+      keyEnv: "TYPESAFE_API_KEY",
+      keysUrl: "https://console.typesafe.ai/keys",
+    },
+    openrouter: {
+      name: "OpenRouter",
+      endpoint: "https://openrouter.ai/api/alpha/decisions",
+      model: "typesafe/jev-1.13",
+      keyEnv: "OPENROUTER_API_KEY",
+      keysUrl: "https://openrouter.ai/keys",
+    },
+  },
+  /**
+   * The list price per input token, $0.042 per million at both providers; output tokens are free.
+   * Used for the spend cap and the usage log when a response carries no cost (TypeSafe's never does).
+   */
+  inputUsdPerToken: 0.042 / 1_000_000,
   /** Context window per the model page. We keep requests well under it. */
   contextTokens: 32_000,
   /** Approximate budget for the job description inside a rating request (chars, ~4 chars per token). */
@@ -526,6 +552,19 @@ export const REPORT = {
   /** The statuses the page lets a person set, in the order they are offered. */
   statuses: ["applied", "needs_review", "queued", "skipped", "blocked", "failed"],
 } as const;
+
+/**
+ * Which provider JEV is reached through. JEV_PROVIDER in .env decides when it names one. Otherwise
+ * TypeSafe when TYPESAFE_API_KEY is set, else OpenRouter when OPENROUTER_API_KEY is set. Null when
+ * neither key is there.
+ */
+export function jevProvider(): JevProvider | null {
+  const asked = (process.env.JEV_PROVIDER ?? "").trim();
+  if (asked === "typesafe" || asked === "openrouter") return asked;
+  if (process.env.TYPESAFE_API_KEY?.trim()) return "typesafe";
+  if (process.env.OPENROUTER_API_KEY?.trim()) return "openrouter";
+  return null;
+}
 
 export type WriterBackend = "claude-code" | "api" | "codex" | "openai";
 const WRITER_BACKENDS: readonly WriterBackend[] = ["claude-code", "api", "codex", "openai"];

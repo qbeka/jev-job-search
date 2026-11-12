@@ -1,0 +1,9 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "a": { "type": "noul", "noul": 0.98 },
+    "b": { "type": "choice", "choice": "x", "confidence": 0.7, "probabilities": { "x": 0.8, "y": 0.2 } },
+    "c": { "type": "score", "score": 1.7, "confidence": 0.55, "legend": { "0": "lo", "1": "mid", "2": "hi" }, "probabilities": { "0": 0.1, "1": 0.1, "2": 0.8 } }
+  },
+  "usage": { "input_tokens": 120, "output_tokens": 12 }
+}

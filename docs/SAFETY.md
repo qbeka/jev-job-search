@@ -42,10 +42,11 @@ profile. The tool makes that the only way.
 - The answer memory (`data/memory.json`) holds answers Claude wrote for you
   and the questions they answered. It never leaves the machine.
   `npx jev memory --clear` empties it.
-- The OpenRouter key is read from `.env` only. Error bodies are redacted
+- The JEV key (TypeSafe or OpenRouter) is read from `.env` only. Error bodies are redacted
   before they are printed (`src/jev/client.ts`).
 - What leaves the machine: job text and the profile's facts go to
-  OpenRouter (JEV) on every rating and form-mapping call; the facts, the
+  TypeSafe or OpenRouter (JEV, whichever key is in `.env`) on every rating
+  and form-mapping call; the facts, the
   posting and the open questions go to Anthropic through your own Claude Code
   login when a form has fields left for Claude; the form values go to the
   employer's ATS; nothing goes anywhere else. There is no telemetry.

@@ -19,7 +19,7 @@ const res = (status: number, body: unknown) => new Response(typeof body === "str
 describe("JevClient", () => {
   it("posts model, state and questions with a bearer token and validates the answers", async () => {
     const fetchImpl = vi.fn(async () => res(200, okBody));
-    const jev = new JevClient({ apiKey: "sk-or-v1-test", fetchImpl, usageLog: null });
+    const jev = new JevClient({ provider: "openrouter", apiKey: "sk-or-v1-test", fetchImpl, usageLog: null });
     const answers = await jev.decide({ hello: "world" }, questions);
     expect(answers.a).toEqual({ type: "noul", noul: 0.9 });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
@@ -59,10 +59,11 @@ describe("JevClient", () => {
   });
 
   it("requires an api key", () => {
-    const saved = process.env.OPENROUTER_API_KEY;
-    delete process.env.OPENROUTER_API_KEY;
+    const names = ["OPENROUTER_API_KEY", "TYPESAFE_API_KEY", "JEV_PROVIDER"] as const;
+    const saved = names.map((n) => process.env[n]);
+    for (const n of names) delete process.env[n];
     expect(() => new JevClient({ usageLog: null })).toThrow(/OPENROUTER_API_KEY/);
-    if (saved) process.env.OPENROUTER_API_KEY = saved;
+    names.forEach((n, i) => { if (saved[i] !== undefined) process.env[n] = saved[i]; });
   });
 });
 

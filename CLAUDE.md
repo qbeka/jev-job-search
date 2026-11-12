@@ -103,7 +103,7 @@ doctor` says what is in place and what to do next.
   asks for a signature, or for something the profile does not say, is
   closed and listed in `applications/manual.csv` with the reason (`src/run/outcome.ts`).
   It is never answered to get it through.
-- **No secrets in code or logs.** The OpenRouter key is read from `.env` by
+- **No secrets in code or logs.** The JEV key (TypeSafe or OpenRouter) is read from `.env` by
   `src/config.ts` and nowhere else. Everything printed goes through
   `scrub` (`src/util/redact.ts`), links are kept as `safeUrl`, and every
   child process is started with `childEnv()`, an allow-list that holds no

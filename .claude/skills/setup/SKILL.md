@@ -1,6 +1,6 @@
 ---
 name: setup
-description: First-run setup, start to finish. Use when the user says /setup, "set this up", "get me started", "help me use this", hands you this repository for the first time, or when data/profile.json does not exist. Installs what is missing, builds the profile from the resume and a short interview, has the user add their own OpenRouter key, finds jobs, rehearses, and stops for a "go" before anything is sent.
+description: First-run setup, start to finish. Use when the user says /setup, "set this up", "get me started", "help me use this", hands you this repository for the first time, or when data/profile.json does not exist. Installs what is missing, builds the profile from the resume and a short interview, has the user add their own JEV key (TypeSafe or OpenRouter), finds jobs, rehearses, and stops for a "go" before anything is sent.
 model: claude-sonnet-5-5
 effort: high
 ---
@@ -89,18 +89,21 @@ numbers before they pay: about 6 cents each time the tool finds jobs, and
 about 1 cent for every 10 applications. Five dollars of credit lasts for
 months.
 
-1. Ask them to create a key at https://openrouter.ai/keys and add a few
-   dollars of credit.
+1. Ask them to create a key and add a few dollars of credit, at either
+   https://console.typesafe.ai/keys (TypeSafe, who make JEV) or
+   https://openrouter.ai/keys (OpenRouter, who resell it). The model and
+   the price are the same.
 2. Run `cp .env.example .env`, then `open -e .env` so the file opens in a
    text editor.
-3. Ask them to paste the key after `OPENROUTER_API_KEY=`, save, and tell you
-   when it is done.
+3. Ask them to paste a TypeSafe key after `TYPESAFE_API_KEY=`, or an
+   OpenRouter key after `OPENROUTER_API_KEY=`, save, and tell you when it
+   is done.
 4. Run `npx jev doctor --online`. It makes one tiny JEV call and
    one tiny Claude call to prove both work.
 
 Never ask the user to paste the key into the chat, and never print it. If
-they paste it into the chat anyway, tell them to delete that key at
-openrouter.ai/keys and create a new one, because a key in a chat is exposed.
+they paste it into the chat anyway, tell them to delete that key where they
+made it (console.typesafe.ai/keys or openrouter.ai/keys) and create a new one, because a key in a chat is exposed.
 
 ## 6. Find jobs
 

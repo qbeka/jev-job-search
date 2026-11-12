@@ -4,8 +4,10 @@ Two services do the thinking.
 
 - **JEV** answers the questions that have a fixed set of answers, such as
   "which of my details goes in this box?" and "how good a fit is this
-  job?" You pay for it through your OpenRouter key. **This is the only
-  separate bill.**
+  job?" You pay for it through your own key, from TypeSafe (who make JEV)
+  or OpenRouter (who resell it), at the same price. **This is the only
+  separate bill.** With both keys in `.env`, TypeSafe is used;
+  `JEV_PROVIDER=openrouter` picks the other.
 - **Claude** writes the answers that need sentences, such as "Why do you
   want to work here?" It runs on the Sonnet 5.5 model at low effort,
   through Claude Code on your own Claude subscription, so there is no
@@ -31,8 +33,9 @@ A search is separate: rating 350 to 460 new postings costs $0.06 to
 $0.09, and a second search on the same day costs close to nothing, because
 a posting that has not changed keeps its rating.
 
-Five dollars of OpenRouter credit pays for about 60 searches and 3,000
-applications.
+Five dollars of JEV credit, at TypeSafe or OpenRouter, pays for about 60
+searches and 3,000 applications. TypeSafe reports tokens and no cost, so the
+tool works the cost out at the list price for the spend caps and `npx jev cost`.
 
 For the record, everything we spent while building and testing the tool
 from 1 to 2 October came to $1.43: 4 searches ($0.35), 118 applications
