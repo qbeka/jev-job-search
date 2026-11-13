@@ -135,10 +135,29 @@ export function categoryOf(f: Pick<DumpedField, "label" | "section" | "hint" | "
   return "general";
 }
 
-/** The country a question about the right to work means: the one it names, else the posting's. Null when neither says. */
-export function countryOf(label: string, job: Job): string | null {
+/**
+ * A question about the country the person lives in, not the posting's: "the country you currently
+ * reside in", "your country of residence", "where you currently live". "Permanent resident" is a
+ * status, not a place, so it does not count.
+ */
+const RESIDENCE_Q = /\bresid(?:e|es|ing)\b|(?<!permanent )\bresiden(?:ce|cy)\b|\bwhere you (?:currently )?(?:live|are (?:currently )?(?:living|located|based))\b|\b(?:country|place) (?:that |in which )?you (?:currently )?(?:live|are (?:currently )?(?:living|located|based))\b|\byour (?:current )?(?:home )?country\b/i;
+
+/** The country the person lives in, from the profile's address, named the way the rest of this file names it. */
+export function residenceOf(profile: Profile): string | null {
+  const { country, countryCode } = profile.address;
+  if (/^ca$/i.test(countryCode) || /\bcanad/i.test(country)) return "Canada";
+  if (/^us$/i.test(countryCode) || /united states|^\s*u\.?s\.?a?\.?\s*$|\bamerica\b/i.test(country)) return "United States";
+  return country.trim() || null;
+}
+
+/**
+ * The country a question about the right to work means: the one it names; else the person's own,
+ * when it asks about where they live; else the posting's. Null when none of these says.
+ */
+export function countryOf(label: string, job: Job, profile: Profile): string | null {
   if (/\bcanad/i.test(label)) return "Canada";
   if (/united states|\bu\.?s\.?a?\.?\b|\bamerica\b/i.test(label)) return "United States";
+  if (RESIDENCE_Q.test(label)) return residenceOf(profile);
   const tier = locationTier(job.locations);
   if (tier === "vancouver" || tier === "canada") return "Canada";
   if (tier === "us") return "United States";
@@ -151,7 +170,7 @@ export const polarity = (label: string): "Yes" | "No" | null => (/^\s*yes\b/i.te
 
 /** The true answer to a question about the right to work, from the profile. Null when the country cannot be told. */
 export function truthFor(category: Category, label: string, profile: Profile, job: Job): "Yes" | "No" | null {
-  const country = countryOf(label, job);
+  const country = countryOf(label, job, profile);
   if (!country) return null;
   const auth = authForCountry(profile, country);
   return category === "authorization" ? auth.authorized : category === "sponsorship" ? auth.requires_sponsorship : null;
@@ -170,7 +189,7 @@ export function gateAnswer(f: Pick<DumpedField, "label" | "section" | "hint" | "
   const truth = truthFor(category, f.label, profile, job);
   if (truth === null) return "the question does not name a country and the posting's is not clear, so the answer is yours";
   const said = polarity(value);
-  if (said !== null && said !== truth) return `the answer "${value.slice(0, 30)}" does not match the profile, which says ${truth} for ${countryOf(f.label, job)}`;
+  if (said !== null && said !== truth) return `the answer "${value.slice(0, 30)}" does not match the profile, which says ${truth} for ${countryOf(f.label, job, profile)}`;
   return null;
 }
 
@@ -603,8 +622,9 @@ function gpaValue(profile: Profile): string | null {
 export function valueForJob(profile: Profile, job: Job, key: FieldKey, label = ""): string | null {
   if (isSpecialKey(key)) return null;
   if (key === "authorized_to_work" || key === "requires_sponsorship") {
-    // The country is the one the question names, else the posting's. When neither says, the answer is the person's.
-    const country = countryOf(label, job);
+    // The country is the one the question names, else the person's own for a question about where they live,
+    // else the posting's. When none of these says, the answer is the person's.
+    const country = countryOf(label, job, profile);
     if (!country) return null;
     const auth = authForCountry(profile, country);
     return key === "authorized_to_work" ? auth.authorized : auth.requires_sponsorship;
