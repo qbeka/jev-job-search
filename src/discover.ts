@@ -6,6 +6,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { DISCOVER, PATHS, CACHE } from "./config.js";
+import { resolveShortLinks } from "./sources/shortLinks.js";
 import { JevClient } from "./jev/client.js";
 import { describe } from "./jobs/describe.js";
 import { capabilityFor } from "./accounts/capability.js";
@@ -122,6 +123,8 @@ export async function collectJobs(opts: DiscoverOptions = {}): Promise<Job[]> {
   ]);
   log(`[sources] simplify ${simplify.length}, github lists ${readmes.length}, jobswithpay ${jobsWithPay.length}`);
   jobs.push(...simplify, ...readmes, ...jobsWithPay);
+  // Before boards are worked out from the links: a short link hides which board a job is on.
+  if (opts.boards !== false) await resolveShortLinks(jobs, { log });
 
   if (existsSync(PATHS.imports)) {
     for (const f of readdirSync(PATHS.imports).filter((f) => f.endsWith(".csv"))) {

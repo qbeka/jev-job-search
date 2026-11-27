@@ -35,6 +35,8 @@ export const PATHS = {
   walledHosts: path.join(ROOT, "data", "cache", "walled-hosts.json"),
   /** JEV's ratings of postings, kept so an unchanged posting is not rated again. */
   ratings: path.join(ROOT, "data", "cache", "ratings.json"),
+  /** Where each short link in a job list leads, so it is followed once. */
+  shortLinks: path.join(ROOT, "data", "cache", "short-links.json"),
   /** JEV's field mappings of forms, kept so an unchanged form is not mapped again. */
   plans: path.join(ROOT, "data", "cache", "plans.json"),
   /** Jobs the tool could not finish and left for the person, with the reason and the link. */
@@ -166,6 +168,9 @@ export const DISCOVER = {
    * Jobs there are skipped before rating. Sites the apply run finds walled are remembered in
    * data/cache/walled-hosts.json and skipped the same way next time.
    */
+  /** Link shorteners some lists put in front of every job. Followed by redirect only, to find the real posting. */
+  shortLinkHosts: ["go.vansh.nyc"],
+  shortLinkTimeoutMs: 5000,
   accountWalledHosts: ["eightfold.ai", "careers.microsoft.com", "jobs.intuit.com", "jobs.ea.com"],
   /** Job boards whose forms the page scripts cannot read yet. Their jobs are skipped with that reason. */
   unreadableAts: ["smartrecruiters"],
