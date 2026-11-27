@@ -134,13 +134,19 @@ export const JEV = {
   runSpendCapUsd: 1.0,
 } as const;
 
+/** A whole number from the environment, kept between lo and hi; the default when it is unset or not a number. */
+function envCount(name: string, fallback: number, lo = 1, hi = 8): number {
+  const n = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
+}
+
 export const DISCOVER = {
   /** Only postings this fresh are considered. */
   maxAgeDays: 14,
-  /** Concurrency for description fetches. */
-  fetchConcurrency: 8,
-  /** Concurrency for JEV rating calls. */
-  rateConcurrency: 6,
+  /** Concurrency for board and description fetches (JEV_FETCH_CONCURRENCY raises it on a machine with bandwidth to spare). */
+  fetchConcurrency: envCount("JEV_FETCH_CONCURRENCY", 8, 1, 32),
+  /** Concurrency for JEV rating calls (JEV_RATE_CONCURRENCY; mind the provider's rate limit). */
+  rateConcurrency: envCount("JEV_RATE_CONCURRENCY", 6, 1, 32),
   /** Fetch timeout for job pages and ATS APIs. */
   fetchTimeoutMs: 15_000,
   /** How many jobs to surface in the queue per run. */
@@ -626,12 +632,6 @@ export const DOCTOR = {
   /** A queue older than this is worth refreshing before a run: postings close. */
   staleQueueHours: 24,
 } as const;
-
-/** A whole number from the environment, kept between lo and hi; the default when it is unset or not a number. */
-function envCount(name: string, fallback: number, lo = 1, hi = 8): number {
-  const n = Number.parseInt(process.env[name] ?? "", 10);
-  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
-}
 
 export const RUN = {
   /** How many queued jobs `discover` lists when it is done. */
