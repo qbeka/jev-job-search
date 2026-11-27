@@ -19,7 +19,7 @@ import { monthName, sponsorshipLater, type Profile } from "../profile/schema.js"
 import { BANK_INTENTS } from "../answers/bank.js";
 import { countryOfLocations, locationTier } from "../jobs/hardFilters.js";
 import type { Job } from "../jobs/normalize.js";
-import type { DumpedField, FieldsDump, FillPlan, PlannedField } from "./fields.js";
+import { withDistinctLabels, type DumpedField, type FieldsDump, type FillPlan, type PlannedField } from "./fields.js";
 import { documentPolicy, documentsFor, tailorJob } from "../documents/tailor.js";
 import { loadQueue } from "../jobs/queue.js";
 
@@ -366,7 +366,10 @@ let plans: KeyedCache<FillPlan> | null = null;
  * the job or the candidate, gets the same plan back without asking JEV: this is the second fill
  * of a form, and the real run after a rehearsal.
  */
+export { withDistinctLabels };
+
 export async function mapForm(jev: JevClient, profile: Profile, job: Job, dump: FieldsDump): Promise<FillPlan> {
+  dump = withDistinctLabels(dump);
   if (!CACHE.plans) return mapFormFresh(jev, profile, job, dump);
   plans ??= new KeyedCache<FillPlan>(PATHS.plans, "all", CACHE.maxPlans);
   // The values a form happens to hold (an earlier fill, an autofill) do not change what belongs in it.

@@ -8,7 +8,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { BROWSER, PATHS } from "../config.js";
-import { FieldsDump } from "../forms/fields.js";
+import { FieldsDump, withDistinctLabels } from "../forms/fields.js";
 import { closeTab, listTargets, Page, sleep } from "./cdp.js";
 import { withStore, writeAtomic } from "../util/store.js";
 import { scrub } from "../util/redact.js";
@@ -112,7 +112,7 @@ export async function settle(page: Page): Promise<void> {
 }
 
 export async function dump(page: Page): Promise<FieldsDump> {
-  return FieldsDump.parse(JSON.parse(await page.evaluate<string>(script("dumpFields.js"))));
+  return withDistinctLabels(FieldsDump.parse(JSON.parse(await page.evaluate<string>(script("dumpFields.js")))));
 }
 
 export async function goto(page: Page, url: string): Promise<void> {
