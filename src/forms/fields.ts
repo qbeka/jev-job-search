@@ -114,3 +114,20 @@ export const FillPlan = z.object({
   jevCostUsd: z.number(),
 });
 export type FillPlan = z.infer<typeof FillPlan>;
+
+/**
+ * Boxes that share one label ("Address" over street, city, province and postal code) are told apart by
+ * their placeholders: "Address: City", "Address: State/Province". Without this every box reads the same and
+ * a province box can get the city or the postal code.
+ */
+export function withDistinctLabels(dump: FieldsDump): FieldsDump {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const count = new Map<string, number>();
+  for (const f of dump.fields) if (f.label) count.set(norm(f.label), (count.get(norm(f.label)) ?? 0) + 1);
+  const fields = dump.fields.map((f) => {
+    const shared = f.label && (count.get(norm(f.label)) ?? 0) > 1;
+    const own = f.placeholder?.trim();
+    return shared && own && norm(own) !== norm(f.label) && !norm(f.label).includes(norm(own)) ? { ...f, label: `${f.label}: ${own}` } : f;
+  });
+  return { ...dump, fields };
+}
