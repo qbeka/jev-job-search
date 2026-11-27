@@ -20,6 +20,7 @@ const NOT_RERATED: readonly QueueStatus[] = KEPT_ON_REDISCOVERY.filter((s) => s 
 /** Jobs kept in the queue when their posting is gone from every list: sent, unconfirmed, or waiting on the person or a run. */
 const CARRIED_OVER: readonly QueueStatus[] = KEPT_ON_REDISCOVERY.filter((s) => s !== "skipped" && s !== "failed");
 import { rateJob, type FitResult } from "./jobs/rate.js";
+import { levelRefusedByTitle, wantsOf } from "./jobs/wants.js";
 import { loadRows, saveRows, upsertEntry } from "./log/csv.js";
 import { usStatus, type Profile } from "./profile/schema.js";
 import type { Answer } from "./jev/types.js";
@@ -181,6 +182,7 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
   const all = await collectJobs({ ...opts, ...(gradYear !== undefined ? { gradYear } : {}) });
   const learned = learnedWalledHosts();
   const us = usStatus(profile);
+  const wants = wantsOf(profile);
   const collected = all.length;
   log(`[discover] ${collected} unique postings`);
 
@@ -191,7 +193,7 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
   // An account board counts when the person has an account there or allowed one, even if today's limit of new accounts is used up.
   const withAccount = (url: string) => (capabilityFor(url)?.verdict ?? "no") !== "no";
   for (const job of all) {
-    const reason = preFilter(job, now, (url) => isWalled(url, learned), us, opts.maxAgeDays, withAccount);
+    const reason = preFilter(job, now, (url) => isWalled(url, learned), us, opts.maxAgeDays, withAccount) ?? levelRefusedByTitle(job.title, wants);
     if (reason) decided.push({ job, fit: null, reason });
     else kept.push(job);
   }

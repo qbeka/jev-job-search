@@ -3,7 +3,7 @@
  * might need (speculative fan-out). Code turns the typed answers into a
  * composite score, hard skips, and human-readable reasons.
  */
-import { FIT_WEIGHTS, GRADUATION_MISMATCH_MULTIPLIER, LOCATION_MULTIPLIER, RECENCY_FLOOR, DISCOVER } from "../config.js";
+import { FIT_WEIGHTS, GRADUATION_MISMATCH_MULTIPLIER, RECENCY_FLOOR, DISCOVER, WANTS } from "../config.js";
 import type { JevClient } from "../jev/client.js";
 import { choice, noul, score, scoreToUnit } from "../jev/questions.js";
 import type { Answer, ChoiceAnswer, NoulAnswer, Questions, ScoreAnswer } from "../jev/types.js";
@@ -11,6 +11,7 @@ import { monthName, sponsorshipLater, usStatus, type Profile } from "../profile/
 import { locationTier, type LocationTier } from "./hardFilters.js";
 import { ageDays, type Job } from "./normalize.js";
 import { hashOf, type KeyedCache } from "../util/cache.js";
+import { LEVEL_WORDS, levelRefusedByTitle, placeMultiplier, wantsOf, type Level, type Wants } from "./wants.js";
 
 const LEVELS5 = ["None", "Weak", "Partial", "Strong", "Near exact"];
 
@@ -27,8 +28,9 @@ function termCriteria(gradMonth: number, gradYear: number): Record<string, strin
 }
 
 /** Every question for one posting, with the term and graduation wording taken from the profile. */
-export function fitQuestions(profile: Pick<Profile, "education">): Questions {
+export function fitQuestions(profile: Pick<Profile, "education"> & Partial<Pick<Profile, "preferences">>): Questions {
   const edu = profile.education[0];
+  const areas = (profile.preferences?.engineeringAreas ?? []).map((s) => s.trim()).filter(Boolean);
   const month = edu?.gradMonth ?? 4;
   const year = edu?.gradYear ?? new Date().getUTCFullYear() + 1;
   return {
@@ -38,6 +40,8 @@ export function fitQuestions(profile: Pick<Profile, "education">): Questions {
       true: `It names a graduation window, class year or "returning to school after" rule that excludes ${monthName(month)} ${year}`,
       false: `No graduation requirement is stated, or ${monthName(month)} ${year} fits it`,
     }),
+    // Only when the person named areas, so the ratings cached for every other profile stay valid.
+    ...(areas.length ? { area_match: score(`How closely does the role's main area of engineering match the areas the candidate prefers, best first: ${areas.join(", ")}?`, LEVELS5) } : {}),
   };
 }
 
@@ -115,6 +119,7 @@ export function buildFitState(job: Job, profile: Profile, now = new Date()): Rec
       // Only when the profile lists any, so the ratings cached for every other profile stay valid.
       ...(sponsorshipLater(profile).length ? { authorized_now_but_needs_sponsorship_later_in: sponsorshipLater(profile) } : {}),
       preferred_locations: profile.preferences.preferredLocations,
+      ...(profile.preferences.engineeringAreas?.length ? { preferred_engineering_areas: profile.preferences.engineeringAreas } : {}),
     },
   };
 }
@@ -138,10 +143,12 @@ export async function rateJob(jev: JevClient, job: Job, profile: Profile, now = 
     answers = await jev.decide(buildFitState(job, profile, now), fitQuestions(profile), `rate:${job.company}:${job.title}`);
     cache?.set(key, answers);
   }
-  return scoreFromAnswers(job, answers, now, usStatus(profile));
+  return scoreFromAnswers(job, answers, now, usStatus(profile), wantsOf(profile));
 }
 
-export function scoreFromAnswers(job: Job, answers: Record<string, Answer>, now = new Date(), us: { authorized: boolean; citizen: boolean } = { authorized: false, citizen: false }): FitResult {
+const NO_WANTS: Wants = { levels: [], places: [], remote: "open", relocate: true, areas: [] };
+
+export function scoreFromAnswers(job: Job, answers: Record<string, Answer>, now = new Date(), us: { authorized: boolean; citizen: boolean } = { authorized: false, citizen: false }, wants: Wants = NO_WANTS): FitResult {
   // A rating saved before a question existed simply lacks it; that reads as "no".
   const n = (k: string) => (answers[k] as NoulAnswer | undefined)?.noul ?? 0;
   const c = (k: string) => answers[k] as ChoiceAnswer;
@@ -160,8 +167,13 @@ export function scoreFromAnswers(job: Job, answers: Record<string, Answer>, now 
   else if (c("work_auth").choice === "us_citizenship_required" && c("work_auth").confidence >= 0.5 && !us.citizen) skipReason = "US citizenship or clearance required";
   else if (job.ats === "other" && n("needs_account") > 0.9) skipReason = "needs an account to apply";
   else if (n("requires_references") > 0.85) skipReason = "references required";
+  else if (levelRefusedByTitle(job.title, wants)) skipReason = levelRefusedByTitle(job.title, wants);
+  else if (unwantedLevel(c("level"), wants)) skipReason = `${c("level").choice === "internship" ? "an internship" : "a full-time role"}, and you asked for ${wants.levels.map((l) => LEVEL_WORDS[l]).join(" or ")}`;
 
-  const levelFit = { internship: 1, new_grad: 1, experienced: 0.1, other: 0.3 }[c("level").choice] ?? 0.3;
+  const level = c("level")?.choice;
+  const levelFit = wants.levels.length && (level === "internship" || level === "new_grad") && !wants.levels.includes(level as Level)
+    ? WANTS.otherLevelFit
+    : ({ internship: 1, new_grad: 1, experienced: 0.1, other: 0.3 }[level] ?? 0.3);
   const termFit = { summer: 1, new_grad: 1, winter: 0.8, earlier: 0.3, other: 0.5 }[c("term").choice] ?? 0.5;
   const components = {
     stackMatch: scoreToUnit(s("stack_match").score, LEVELS5.length),
@@ -173,11 +185,19 @@ export function scoreFromAnswers(job: Job, answers: Record<string, Answer>, now 
   };
   let base = 0;
   for (const [k, w] of Object.entries(FIT_WEIGHTS)) base += w * (components[k as keyof typeof components] ?? 0);
+  // With areas named, the area match joins the score and the weights are scaled back to a total of one.
+  const area = answers.area_match as ScoreAnswer | undefined;
+  if (wants.areas.length && area) {
+    const areaMatch = scoreToUnit(area.score, LEVELS5.length);
+    (components as Record<string, number>).areaMatch = areaMatch;
+    const total = Object.values(FIT_WEIGHTS).reduce((a, b) => a + b, 0);
+    base = (base + WANTS.areaWeight * areaMatch) / (total + WANTS.areaWeight);
+  }
   const age = ageDays(job, now);
   const recency = age === null ? 0.85 : 1 - (1 - RECENCY_FLOOR) * Math.min(1, age / DISCOVER.maxAgeDays);
   // The candidate may still apply, so a graduation window that excludes them lowers the rank instead of dropping the job.
   const gradExcluded = n("graduation_excluded") > 0.7;
-  const scoreValue = Math.round(base * LOCATION_MULTIPLIER[tier] * recency * (gradExcluded ? GRADUATION_MISMATCH_MULTIPLIER : 1) * 1000) / 1000;
+  const scoreValue = Math.round(base * placeMultiplier(job, tier, wants) * recency * (gradExcluded ? GRADUATION_MISMATCH_MULTIPLIER : 1) * 1000) / 1000;
 
   if (c("work_auth").choice === "us_sponsors" && !us.authorized) reasons.push("US role, sponsorship offered");
   if (c("work_auth").choice === "unclear" && tier === "us" && !us.authorized) reasons.push("US role, sponsorship not stated");
@@ -189,4 +209,11 @@ export function scoreFromAnswers(job: Job, answers: Record<string, Answer>, now 
 
   const decision: FitResult["decision"] = skipReason ? "skip" : scoreValue >= DISCOVER.applyThreshold ? "apply" : "below_threshold";
   return { score: scoreValue, decision, skipReason, reasons, components, locationTier: tier, answers };
+}
+
+/** True when the rating is sure the job is a kind the person did not ask for. */
+function unwantedLevel(level: ChoiceAnswer | undefined, w: Wants): boolean {
+  if (!w.levels.length || !level) return false;
+  if (level.choice !== "internship" && level.choice !== "new_grad") return false;
+  return !w.levels.includes(level.choice as Level) && level.confidence >= WANTS.levelSkipConfidence;
 }

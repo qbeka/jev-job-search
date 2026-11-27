@@ -207,6 +207,29 @@ export const LOCATION_MULTIPLIER = {
 } as const;
 
 /** Applied when the posting asks for a graduation date the candidate does not have. They can still apply, so it ranks lower instead of being dropped. */
+/**
+ * Place multipliers once the person names places they want (src/jobs/wants.ts). Their own places
+ * first, then remote when they are open to it, then the same country, then anywhere else.
+ */
+export const PLACE_MULTIPLIER = {
+  preferred: 1.0,
+  remoteWanted: 1.0,
+  remoteOpen: 0.9,
+  unclear: 0.7,
+  sameCountryWillMove: 0.85,
+  sameCountry: 0.72,
+  elsewhereWillMove: 0.65,
+  elsewhere: 0.5,
+} as const;
+
+/** What the person asked for, in the fit score: weight of the area match when they named areas, and the level fit of the kind of job they did not ask for. */
+export const WANTS = {
+  areaWeight: 0.15,
+  otherLevelFit: 0.2,
+  /** A rated level at or above this confidence that is not a kind the person asked for skips the job. */
+  levelSkipConfidence: 0.7,
+} as const;
+
 export const GRADUATION_MISMATCH_MULTIPLIER = 0.6;
 
 /** Recency multiplier: 1.0 for today, decaying linearly to this floor at maxAgeDays. */
