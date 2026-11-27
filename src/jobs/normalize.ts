@@ -92,7 +92,8 @@ export function atsFromUrl(url: string): Ats {
   if (on("greenhouse.io") || /[?&]gh_jid=/.test(u)) return "greenhouse";
   if (on("lever.co")) return "lever";
   if (on("ashbyhq.com")) return "ashby";
-  if (on("myworkdayjobs.com", "workday.com") || /(^|\.)wd\d+\./.test(h)) return "workday";
+  // LinkedIn's "apply with LinkedIn" gadget for Workday postings leads to the same Workday account wall.
+  if (on("myworkdayjobs.com", "workday.com", "myworkdaygadgets.com") || /(^|\.)wd\d+\./.test(h)) return "workday";
   if (on("icims.com") || /[?&]icims=1\b/.test(u)) return "icims";
   if (on("smartrecruiters.com")) return "smartrecruiters";
   if (on("jobvite.com")) return "jobvite";
