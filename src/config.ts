@@ -627,6 +627,12 @@ export const DOCTOR = {
   staleQueueHours: 24,
 } as const;
 
+/** A whole number from the environment, kept between lo and hi; the default when it is unset or not a number. */
+function envCount(name: string, fallback: number, lo = 1, hi = 8): number {
+  const n = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
+}
+
 export const RUN = {
   /** How many queued jobs `discover` lists when it is done. */
   listed: 50,
@@ -634,10 +640,12 @@ export const RUN = {
    * Forms the runner fills side by side, one tab each. One means one job at a time: open, fill, send,
    * close, next. That is the cleanest to watch and the fastest per form, because no tab waits for the
    * window; the documents for the next job are written while this one is being filled.
+   * JEV_FILL_CONCURRENCY raises it on a machine with cores to spare, such as a hosted runner, where most of a
+   * form's time is spent waiting for pages and answers rather than typing.
    */
-  fillConcurrency: 1,
-  /** Of those, how many may be on the same site at once, and the pause between opening two forms there. Job boards throttle bursts. */
-  perHostConcurrency: 1,
+  fillConcurrency: envCount("JEV_FILL_CONCURRENCY", 1),
+  /** Of those, how many may be on the same site at once (JEV_PER_HOST_CONCURRENCY), and the pause between opening two forms there. Job boards throttle bursts. */
+  perHostConcurrency: envCount("JEV_PER_HOST_CONCURRENCY", 1),
   /** Sites that save every field to their server as it changes, and rate-limit bursts: one form at a time, with a longer pause. */
   gentleHosts: ["ashbyhq.com"],
   gentleGapMs: 3_000,

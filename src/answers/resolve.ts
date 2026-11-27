@@ -64,7 +64,14 @@ export function candidateContext(profile: Profile): Record<string, unknown> {
       email: profile.email,
       phone: `${profile.phone.countryCode} ${profile.phone.national}`,
       education: profile.education,
-      address: `${profile.address.city}, ${profile.address.region}, ${profile.address.country}`,
+      // The whole address as the candidate gave it: forms ask for a postal code or a street line as often as a city.
+      address: {
+        line1: profile.address.line1 || undefined,
+        city: profile.address.city,
+        region: profile.address.region,
+        postalCode: profile.address.postalCode || undefined,
+        country: profile.address.country,
+      },
       spokenLanguages: profile.spokenLanguages,
       demographics: profile.demographics,
       preferences: profile.preferences,

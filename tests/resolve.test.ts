@@ -57,3 +57,12 @@ describe("the writer's prompt", () => {
     expect(text).not.toContain(profile.resume.path);
   });
 });
+
+describe("the address the writer sees", () => {
+  it("includes the street and postal code, so a form asking for them is not held", () => {
+    const address = (candidateContext(profile) as { candidate: { address: Record<string, string> } }).candidate.address;
+    expect(address.city).toBe(profile.address.city);
+    expect(address.postalCode).toBe(profile.address.postalCode || undefined);
+    expect(address.line1).toBe(profile.address.line1 || undefined);
+  });
+});
