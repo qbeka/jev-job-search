@@ -131,6 +131,10 @@ export const ProfileSchema = z.object({
     willingToRelocate: YesNo,
     remote: z.enum(["preferred", "open", "no"]),
     preferredLocations: z.array(z.string()),
+    /** Which kinds of job to rank: internship, new_grad, part_time. Empty or left out means all. */
+    roleTypes: z.array(z.enum(["internship", "new_grad", "part_time"])).optional(),
+    /** Areas of engineering the person prefers, in order. Left out means no preference. */
+    engineeringAreas: z.array(z.string()).optional(),
     howDidYouHear: z.string(),
     /** What to do when a form requires references. "skip" logs and moves on. */
     references: z.enum(["skip"]),
