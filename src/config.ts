@@ -157,6 +157,10 @@ export const DISCOVER = {
    * tail of weak matches. The queue is ranked, so the best apply first.
    */
   applyThreshold: 0.3,
+  /** When no job clears applyThreshold, this many of the closest are queued anyway, marked as below the usual bar. */
+  fallbackTop: 10,
+  /** ...but never one scoring under this. */
+  fallbackMinScore: 0.15,
   /**
    * Careers sites known to need an account or a login before the form, by hostname fragment.
    * Jobs there are skipped before rating. Sites the apply run finds walled are remembered in

@@ -65,7 +65,45 @@ export type DiscoverSummary = {
   skippedByJev: number;
   jevCostUsd: number;
   jevCalls: number;
+  /** Jobs queued only because nothing cleared the bar (see DISCOVER.fallbackTop). */
+  belowBar: number;
+  /** The most common reasons jobs were left out, in plain words, most common first. */
+  topReasons: { reason: string; count: number }[];
 };
+
+export const BELOW_BAR = "below your usual bar: one of the closest matches this search found";
+
+/** A skip reason grouped with its kind, so "posted 16 days ago" and "posted 40 days ago" count together. */
+export function reasonGroup(reason: string): string {
+  if (/^posted \d+ days ago/.test(reason)) return "posted too long ago";
+  if (/needs an account|account per company/.test(reason)) return "needs an account on the employer's site";
+  if (/below threshold/.test(reason)) return "a weak fit for your profile";
+  if (/form cannot be read/.test(reason)) return "a form the tool can't read yet";
+  return reason;
+}
+
+/** When nothing clears the bar, the closest matches are queued anyway, marked, so a search never ends with nothing to look at. */
+export function promoteClosest(decided: Decided[], alreadyQueued: boolean): number {
+  if (alreadyQueued || decided.some((d) => d.fit?.decision === "apply")) return 0;
+  const near = decided
+    .filter((d) => d.fit?.decision === "below_threshold" && d.fit.score >= DISCOVER.fallbackMinScore)
+    .sort((a, b) => (b.fit?.score ?? 0) - (a.fit?.score ?? 0))
+    .slice(0, DISCOVER.fallbackTop);
+  for (const d of near) d.fit = { ...(d.fit as FitResult), decision: "apply", reasons: [BELOW_BAR, ...(d.fit as FitResult).reasons] };
+  return near.length;
+}
+
+export function topReasons(decided: Decided[], n = 3): { reason: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const d of decided) {
+    if (d.fit?.decision === "apply") continue;
+    const r = d.reason ?? d.fit?.skipReason ?? (d.fit?.decision === "below_threshold" ? "below threshold" : null);
+    if (!r) continue;
+    const g = reasonGroup(r);
+    counts.set(g, (counts.get(g) ?? 0) + 1);
+  }
+  return [...counts].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count).slice(0, n);
+}
 
 export async function collectJobs(opts: DiscoverOptions = {}): Promise<Job[]> {
   const log = opts.log ?? (() => {});
@@ -234,6 +272,9 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
     }
   });
 
+  const belowBar = promoteClosest(decided, previous.entries.some((e) => e.status === "queued"));
+  if (belowBar) log(`[discover] nothing cleared the bar; queued the ${belowBar} closest`);
+  const reasons = topReasons(decided);
   const queue = writeDecided(decided, now, began);
 
   const summary: DiscoverSummary = {
@@ -247,6 +288,8 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
     skippedByJev: queue.entries.filter((e) => e.fit?.decision === "skip").length,
     jevCostUsd: jev.usage.costUsd,
     jevCalls: jev.usage.calls,
+    belowBar,
+    topReasons: reasons,
   };
   return { queue, summary };
 }
